@@ -1,0 +1,6 @@
+-e git+https://github.com/clouetb/matrix-nio.git#egg=matrix-nio[e2e]
+python-olm>=3.1.0
+peewee>=3.9.5
+cachetools
+atomicwrites
+errbot

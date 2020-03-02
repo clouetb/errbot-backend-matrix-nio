@@ -1,0 +1,6 @@
+[Core]
+Name = Matrix Nio
+Module = matrix-nio
+
+[Documentation]
+Description = This is the Matrix Nio backend for Err.
