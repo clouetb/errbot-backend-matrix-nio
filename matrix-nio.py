@@ -352,7 +352,8 @@ class MatrixNioBackend(ErrBot):
         pass
 
     def build_identifier(self, txtrep):
-        profile = await self.client.get_profile(txtrep)
+        log.debug(f"Build id : {txtrep}")
+        profile = self.client.get_profile(txtrep)
         return MatrixNioPerson(id=txtrep,
                                full_name=profile.displayname,
                                emails=[txtrep],
