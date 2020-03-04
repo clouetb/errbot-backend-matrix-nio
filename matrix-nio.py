@@ -239,20 +239,21 @@ class MatrixNioBackend(ErrBot):
 
     def serve_once(self) -> None:
         log.debug("Serve once")
-        asyncio.run(self._serve_once())
+        asyncio.get_event_loop().run_until_complete(self._serve_once())
 
     async def _serve_once(self):
         try:
-            log.info("Initializing connection")
-            login_response = await self.client.login_raw(self.identity['auth_dict'])
-            log.info("Login result: %s", login_response)
-            if isinstance(login_response, LoginError):
-                raise
-            self.connect_callback()
-            self.bot_identifier = await self.build_identifier(login_response.user_id)
-            self.reset_reconnection_count()
+            if not self.client.logged_in:
+                log.info("Initializing connection")
+                login_response = await self.client.login_raw(self.identity['auth_dict'])
+                log.info("Login result: %s", login_response)
+                if isinstance(login_response, LoginError):
+                    raise
+                self.connect_callback()
+                self.bot_identifier = await self.build_identifier(login_response.user_id)
+                self.reset_reconnection_count()
             log.info("Starting sync")
-            await self.client.sync_forever(full_state=True)
+            await self.client.sync_forever(2000, full_state=True)
             log.debug("Sync finished")
         except KeyboardInterrupt:
             log.info("Interrupt received, shutting down..")
@@ -280,36 +281,38 @@ class MatrixNioBackend(ErrBot):
 
         message_instance = self.build_message(event.body)
         message_instance.frm = MatrixNioRoomOccupant(
-            id=event.sender,
-            full_name=room.user_name(event.sender),
-            emails=[event.sender],
-            client=self.client,
-            room=room.room_id
+             id=event.sender,
+             full_name=room.user_name(event.sender),
+             emails=[event.sender],
+             client=self.client,
+             room=room.room_id
         )
         room_instance = MatrixNioRoom(
-            id=room.room_id,
-            title=room.name,
-            subject=room.display_name,
-            client=self.client
+             id=room.room_id,
+             title=room.name,
+             subject=room.display_name,
+             client=self.client
         )
         message_instance.to = room_instance
         self.callback_message(message_instance)
 
-#    def send_message(self, msg: Message):
-#        log.debug(f"Sending message {msg}")
-#        asyncio.run(self._send_message(msg))
+    def send_message(self, msg: Message):
+        log.debug(f"Sending message {msg}")
+        asyncio.run_coroutine_threadsafe(self._send_message(msg), asyncio.get_event_loop())
 
-    async def send_message(self, msg: Message):
+    async def _send_message(self, msg: Message):
+        log.debug("Inside coroutine _send_message")
         msg_data = {
             'msgtype': "m.text",
             'body': msg.body
         }
         try:
-            await self.client.room_send(
-                room_id=msg.to,
+            result = await self.client.room_send(
+                room_id=msg.to.room,
                 message_type='m.room.message',
                 content=msg_data
             )
+            log.debug(f"After send message : {result}")
         except Exception:
             log.exception(
                 "An exception occurred while trying to send the following message "
