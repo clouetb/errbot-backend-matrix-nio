@@ -351,9 +351,9 @@ class MatrixNioBackend(ErrBot):
         # At this time, this backend doesn't support presence
         pass
 
-    def build_identifier(self, txtrep):
+    async def build_identifier(self, txtrep):
         log.debug(f"Build id : {txtrep}")
-        profile = self.client.get_profile(txtrep)
+        profile = await self.client.get_profile(txtrep)
         return MatrixNioPerson(id=txtrep,
                                full_name=profile.displayname,
                                emails=[txtrep],
