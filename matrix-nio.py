@@ -159,12 +159,24 @@ class MatrixNioRoom(MatrixNioIdentifier, Room):
     def destroy(self) -> None:
         pass
 
-    async def join(self, username: str = None, password: str = None):
+    def join(self, username: str = None, password: str = None):
+        asyncio.run_coroutine_threadsafe(
+            self._join(username, password),
+            asyncio.get_event_loop()
+        )
+
+    async def _join(self, username: str = None, password: str = None):
         result = await self._client.join(self.id)
         if isinstance(result, nio.JoinError):
             raise MatrixNioRoomError(result)
 
-    async def create(self):
+    def create(self):
+        asyncio.run_coroutine_threadsafe(
+            self._create(),
+            asyncio.get_event_loop()
+        )
+
+    async def _create(self):
         result = await self._client.room_create(
             name=self.title,
             topic=self.subject
@@ -172,7 +184,13 @@ class MatrixNioRoom(MatrixNioIdentifier, Room):
         if isinstance(result, nio.RoomCreateError):
             raise MatrixNioRoomError(result)
 
-    async def leave(self, reason: str=None):
+    def leave(self, reason: str = None):
+        asyncio.run_coroutine_threadsafe(
+            self._leave(reason),
+            asyncio.get_event_loop()
+        )
+
+    async def _leave(self, reason: str = None):
         result = await self._client.room_leave(self.id)
         if isinstance(result, nio.RoomLeaveError):
             raise MatrixNioRoomError(result)
@@ -333,7 +351,13 @@ class MatrixNioBackend(ErrBot):
         # At this time, this backend doesn't support presence
         pass
 
-    async def build_identifier(self, txtrep):
+    def build_identifier(self, txtrep):
+        asyncio.run_coroutine_threadsafe(
+            self._build_identifier(txtrep),
+            asyncio.get_event_loop()
+        )
+
+    async def _build_identifier(self, txtrep):
         profile = await self.client.get_profile(txtrep)
         return MatrixNioPerson(id=txtrep,
                                full_name=profile.displayname,
@@ -352,7 +376,13 @@ class MatrixNioBackend(ErrBot):
     def query_room(self, room):
         return MatrixNioRoom(title=room, client=self.client)
 
-    async def rooms(self):
+    def rooms(self):
+        asyncio.run_coroutine_threadsafe(
+            self._rooms(),
+            asyncio.get_event_loop()
+        )
+        
+    async def _rooms(self):
         result = await self.client.joined_rooms()
         return [MatrixNioRoom(title=subscription, id=subscription) for subscription in result]
 
