@@ -1,13 +1,12 @@
 import logging
 import sys
 
-from errbot.backends.base import RoomError, Identifier, Person, RoomOccupant, Stream, ONLINE, Room, Message, Backend
+from errbot.backends.base import RoomError, Identifier, Person, RoomOccupant, Room, Message, ONLINE
 from errbot.core import ErrBot
-from errbot.rendering.ansiext import enable_format, TEXT_CHRS
-
-from urllib.parse import quote
 
 # Can't use __name__ because of Yapsy.
+from nio import LoginError, ClientConfig
+
 log = logging.getLogger('errbot.backends.matrix-nio')
 
 try:
@@ -160,12 +159,12 @@ class MatrixNioRoom(MatrixNioIdentifier, Room):
     def destroy(self) -> None:
         pass
 
-    def join(self, username: str = None, password: str = None):
+    async def join(self, username: str = None, password: str = None):
         result = await self._client.join(self.id)
         if isinstance(result, nio.JoinError):
             raise MatrixNioRoomError(result)
 
-    def create(self):
+    async def create(self):
         result = await self._client.room_create(
             name=self.title,
             topic=self.subject
@@ -173,7 +172,7 @@ class MatrixNioRoom(MatrixNioIdentifier, Room):
         if isinstance(result, nio.RoomCreateError):
             raise MatrixNioRoomError(result)
 
-    def leave(self, reason: str=None):
+    async def leave(self, reason: str=None):
         result = await self._client.room_leave(self.id)
         if isinstance(result, nio.RoomLeaveError):
             raise MatrixNioRoomError(result)
@@ -217,7 +216,7 @@ class MatrixNioRoomOccupant(MatrixNioPerson, RoomOccupant):
         return self._room
 
 
-class MatrixNioBackend(Backend):
+class MatrixNioBackend(ErrBot):
     def __init__(self, config):
         super().__init__(config)
 
@@ -229,25 +228,37 @@ class MatrixNioBackend(Backend):
                     "can be found in your bot's `matrixniorc` config file.".format(key)
                 )
                 sys.exit(1)
-
+        # Store the sync token in order to avoid replay of old messages.
+        config = ClientConfig(store_sync_tokens=True)
         self.client = nio.AsyncClient(
             self.identity['site'],
-            self.identity['email']
+            self.identity['email'],
+            config=config
         )
         self.client.add_event_callback(self._handle_message, nio.RoomMessageText)
-        log.info("Initializing connection")
-        await self.client.login_raw(self.identity['auth_dict'])
-        assert self.client.client_session
-        log.info("Connected")
 
-    def serve_once(self):
-        self.bot_identifier = self.build_identifier(self.client.user)
+    def serve_once(self) -> None:
+        log.debug("Serve once")
+        asyncio.run(self._serve_once())
+
+    async def _serve_once(self):
         try:
-            self.reset_reconnection_count()
+            log.info("Initializing connection")
+            login_response = await self.client.login_raw(self.identity['auth_dict'])
+            log.info("Login result: %s", login_response)
+            if isinstance(login_response, LoginError):
+                raise
             self.connect_callback()
+            self.bot_identifier = await self.build_identifier(login_response.user_id)
+            self.reset_reconnection_count()
+            log.info("Starting sync")
+            await self.client.sync_forever(full_state=True)
+            log.debug("Sync finished")
         except KeyboardInterrupt:
             log.info("Interrupt received, shutting down..")
             await self.client.logout()
+            log.debug("Triggering disconnect callback.")
+            self.disconnect_callback()
             return True  # True means shutdown was requested.
         except Exception:
             log.exception("Error reading from Matrix Nio updates rooms.")
@@ -258,10 +269,11 @@ class MatrixNioBackend(Backend):
     def _handle_message(self, room: nio.MatrixRoom, event: nio.Event):
         """
         Handles incoming messages.
-        In Zulip, there are three types of messages: Private messages, Private group messages,
-        and Stream messages. This plugin handles Group PMs as normal PMs between the bot and the
-        user. Stream messages are handled as messages to rooms.
         """
+        log.debug("Handle room message")
+        log.debug("Room: %s", room)
+        log.debug("Event: %s", event)
+
         if not isinstance(event, nio.RoomMessageText):
             log.warning("Unhandled message type (not a text message) ignored")
             return
@@ -283,16 +295,17 @@ class MatrixNioBackend(Backend):
         message_instance.to = room_instance
         self.callback_message(message_instance)
 
-    log.debug("Triggering disconnect callback.")
+#    def send_message(self, msg: Message):
+#        log.debug(f"Sending message {msg}")
+#        asyncio.run(self._send_message(msg))
 
-    def send_message(self, msg: Message):
-        super().send_message(msg)
+    async def send_message(self, msg: Message):
         msg_data = {
             'msgtype': "m.text",
             'body': msg.body
         }
         try:
-            await self.client.send(
+            await self.client.room_send(
                 room_id=msg.to,
                 message_type='m.room.message',
                 content=msg_data
@@ -317,8 +330,8 @@ class MatrixNioBackend(Backend):
         # At this time, this backend doesn't support presence
         pass
 
-    def build_identifier(self, txtrep):
-        profile = self.client.get_profile(txtrep)
+    async def build_identifier(self, txtrep):
+        profile = await self.client.get_profile(txtrep)
         return MatrixNioPerson(id=txtrep,
                                full_name=profile.displayname,
                                emails=[txtrep],
@@ -336,7 +349,7 @@ class MatrixNioBackend(Backend):
     def query_room(self, room):
         return MatrixNioRoom(title=room, client=self.client)
 
-    def rooms(self):
+    async def rooms(self):
         result = await self.client.joined_rooms()
         return [MatrixNioRoom(title=subscription, id=subscription) for subscription in result]
 

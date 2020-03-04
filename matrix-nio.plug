@@ -1,5 +1,5 @@
 [Core]
-Name = Matrix Nio
+Name = MatrixNio
 Module = matrix-nio
 
 [Documentation]
