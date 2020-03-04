@@ -352,12 +352,6 @@ class MatrixNioBackend(ErrBot):
         pass
 
     def build_identifier(self, txtrep):
-        asyncio.run_coroutine_threadsafe(
-            self._build_identifier(txtrep),
-            asyncio.get_event_loop()
-        )
-
-    async def _build_identifier(self, txtrep):
         profile = await self.client.get_profile(txtrep)
         return MatrixNioPerson(id=txtrep,
                                full_name=profile.displayname,
@@ -381,7 +375,7 @@ class MatrixNioBackend(ErrBot):
             self._rooms(),
             asyncio.get_event_loop()
         )
-        
+
     async def _rooms(self):
         result = await self.client.joined_rooms()
         return [MatrixNioRoom(title=subscription, id=subscription) for subscription in result]
