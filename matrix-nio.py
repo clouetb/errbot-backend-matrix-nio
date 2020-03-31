@@ -4,8 +4,7 @@ import sys
 from errbot.backends.base import RoomError, Identifier, Person, RoomOccupant, Room, Message, ONLINE
 from errbot.core import ErrBot
 
-# Can't use __name__ because of Yapsy.
-from nio import LoginError, ClientConfig
+from nio import LoginError, ClientConfig, SyncError
 
 log = logging.getLogger('errbot.backends.matrix-nio')
 
@@ -237,7 +236,7 @@ class MatrixNioRoomOccupant(MatrixNioPerson, RoomOccupant):
 class MatrixNioBackend(ErrBot):
     def __init__(self, config):
         super().__init__(config)
-
+        self.has_synced = False
         self.identity = config.BOT_IDENTITY
         for key in ('email', 'auth_dict', 'site'):
             if key not in self.identity:
@@ -253,7 +252,6 @@ class MatrixNioBackend(ErrBot):
             self.identity['email'],
             config=config
         )
-        self.client.add_event_callback(self._handle_message, nio.RoomMessageText)
 
     def serve_once(self) -> None:
         log.debug("Serve once")
@@ -264,15 +262,26 @@ class MatrixNioBackend(ErrBot):
             if not self.client.logged_in:
                 log.info("Initializing connection")
                 login_response = await self.client.login_raw(self.identity['auth_dict'])
-                log.info("Login result: %s", login_response)
+                log.info(f"Login result: {login_response}")
                 if isinstance(login_response, LoginError):
                     raise
                 self.connect_callback()
                 self.bot_identifier = await self.build_identifier(login_response.user_id)
                 self.reset_reconnection_count()
-            log.info("Starting sync")
-            await self.client.sync_forever(2000, full_state=True)
-            log.debug("Sync finished")
+            if self.has_synced:
+                log.info("Starting sync")
+                await self.client.sync_forever(30000, full_state=True)
+                log.debug("Sync finished")
+            else:
+                log.info("First sync, discarding previous messages")
+                sync_response = await self.client.sync(full_state=True)
+                if isinstance(sync_response, SyncError):
+                    raise SyncError(sync_response)
+                self.has_synced = True
+                self.client.next_batch = sync_response.next_batch
+                # Only setup callback after first sync in order to avoid processing previous messages
+                self.client.add_event_callback(self._handle_message, nio.RoomMessageText)
+
         except KeyboardInterrupt:
             log.info("Interrupt received, shutting down..")
             await self.client.logout()
@@ -290,8 +299,8 @@ class MatrixNioBackend(ErrBot):
         Handles incoming messages.
         """
         log.debug("Handle room message")
-        log.debug("Room: %s", room)
-        log.debug("Event: %s", event)
+        log.debug(f"Room: {room}")
+        log.debug(f"Event: {event}")
 
         if not isinstance(event, nio.RoomMessageText):
             log.warning("Unhandled message type (not a text message) ignored")
@@ -333,8 +342,8 @@ class MatrixNioBackend(ErrBot):
             log.debug(f"After send message : {result}")
         except Exception:
             log.exception(
-                "An exception occurred while trying to send the following message "
-                "to %s: %s" % (msg.to.id, msg.body)
+                f"An exception occurred while trying to send the following message "
+                f"to {msg.to.id}: {msg.body}"
             )
             raise
 
@@ -383,4 +392,4 @@ class MatrixNioBackend(ErrBot):
 
     def prefix_groupchat_reply(self, message, identifier):
         super().prefix_groupchat_reply(message, identifier)
-        message.body = '@{0} {1}'.format(identifier.full_name, message.body)
+        message.body = f"@{identifier.full_name} {message.body}"
