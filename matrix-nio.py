@@ -281,6 +281,7 @@ class MatrixNioBackend(ErrBot):
                 self.client.next_batch = sync_response.next_batch
                 # Only setup callback after first sync in order to avoid processing previous messages
                 self.client.add_event_callback(self._handle_message, nio.RoomMessageText)
+                log.info("End of first sync, now starting normal operation")
 
         except KeyboardInterrupt:
             log.info("Interrupt received, shutting down..")
