@@ -51,7 +51,7 @@ class MatrixNioIdentifier(Identifier):
 
 # `MatrixNioPerson` is used for both 1-1 PMs and Group PMs.
 class MatrixNioPerson(MatrixNioIdentifier, Person):
-    def __init__(self, id, full_name, emails, client: nio.AsyncClient = None):
+    def __init__(self, id, client: nio.AsyncClient, full_name, emails):
         super().__init__(id)
         self._full_name = full_name
         self._emails = emails
@@ -108,13 +108,12 @@ class MatrixNioPerson(MatrixNioIdentifier, Person):
 
 # `MatrixNioRoom` is used for messages to streams.
 class MatrixNioRoom(MatrixNioIdentifier, Room):
-    def __init__(self, title, id=None, subject=None, client: nio.AsyncClient = None):
+    def __init__(self, id, client: nio.AsyncClient, title, subject=None):
         super().__init__(id)
         self._title = title
         self._subject = subject
         self._client = client
-        if client:
-            self.matrix_room = self._client.rooms[id]
+        self.matrix_room = self._client.rooms[id]
 
     @property
     def id(self):
