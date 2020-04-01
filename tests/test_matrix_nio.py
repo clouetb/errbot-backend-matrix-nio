@@ -45,10 +45,16 @@ class TestMatrixNioIdentifier(TestCase):
 class TestMatrixNioPerson(TestCase):
     def __init__(self, method_name):
         super().__init__(method_name)
+        self.client = nio.AsyncClient("test.matrix.org", user="test_user", device_id="test_device")
+        self.client.rooms = {"test_room": "empty_room", "other_test_room": "also_empty_room"}
+
         self.person_id = "12345"
         self.full_name = "Charles de Gaulle"
         self.emails = ["charles@colombay.fr", "charles.degaulle@elysee.fr"]
-        self.person1 = matrix_nio.MatrixNioPerson(self.person_id, self.full_name, self.emails)
+        self.person1 = matrix_nio.MatrixNioPerson(self.person_id,
+                                                  client=self.client,
+                                                  full_name=self.full_name,
+                                                  emails=self.emails)
 
     def test_matrix_nio_person(self):
         self.assertEqual(str(self.person1), self.person_id)
@@ -58,11 +64,17 @@ class TestMatrixNioPerson(TestCase):
         self.assertEqual(self.person1, identifier)
 
     def test_matrix_nio_person_equality(self):
-        person2 = matrix_nio.MatrixNioPerson(12345, "Not Charles de Gaulle", [])
+        person2 = matrix_nio.MatrixNioPerson(12345,
+                                             client=self.client,
+                                             full_name="Not Charles de Gaulle",
+                                             emails=[])
         self.assertEqual(self.person1, person2)
 
     def test_matrix_nio_person_inequality(self):
-        person2 = matrix_nio.MatrixNioPerson(54321, self.full_name, self.emails)
+        person2 = matrix_nio.MatrixNioPerson(54321,
+                                             client=self.client,
+                                             full_name=self.full_name,
+                                             emails=self.emails)
         self.assertNotEqual(self.person1, person2)
 
     def test_matrix_nio_person_acls(self):
@@ -82,7 +94,11 @@ class TestMatrixNioRoom(TestCase):
 
         self.room_id = "test_room"
         self.subject = "test_room"
-        self.room1 = matrix_nio.MatrixNioRoom(self.room_id, self.subject, client=self.client)
+        self.title = "A title"
+        self.room1 = matrix_nio.MatrixNioRoom(self.room_id,
+                                              client=self.client,
+                                              title=self.title,
+                                              subject=self.subject)
 
     def test_matrix_nio_room(self):
         self.assertEqual(str(self.room1), self.room_id)
@@ -96,7 +112,11 @@ class TestMatrixNioRoomOccupant(TestCase):
 
         self.room_id = "test_room"
         self.subject = "test_room"
-        self.room1 = matrix_nio.MatrixNioRoom(self.room_id, self.subject, client=self.client)
+        self.title = "A title"
+        self.room1 = matrix_nio.MatrixNioRoom(self.room_id,
+                                              client=self.client,
+                                              title=self.title,
+                                              subject=self.subject)
 
         self.person_id = "12345"
         self.full_name = "Charles de Gaulle"
@@ -110,7 +130,10 @@ class TestMatrixNioRoomOccupant(TestCase):
     def test_matrix_nio_room_occupant(self):
         room_id1 = "test_room"
         subject1 = "test_room"
-        room1 = matrix_nio.MatrixNioRoom(room_id1, subject1, client=self.client)
+        room1 = matrix_nio.MatrixNioRoom(room_id1,
+                                         title=self.title,
+                                         client=self.client,
+                                         subject=subject1)
         self.assertEqual(self.room_occupant1.room, room1)
 
 
