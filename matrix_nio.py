@@ -13,7 +13,7 @@ try:
     import nio
 except ImportError:
     log.exception("Could not start the Matrix Nio back-end")
-    log.fatal(
+    log.error(
         "You need to install the Matrix Nio support in order "
         "to use the Matrix Nio backend.\n"
         "You should be able to install this package using:\n"
@@ -113,7 +113,8 @@ class MatrixNioRoom(MatrixNioIdentifier, Room):
         self._title = title
         self._subject = subject
         self._client = client
-        self.matrix_room = self._client.rooms[id]
+        if client:
+            self.matrix_room = self._client.rooms[id]
 
     @property
     def id(self):
@@ -165,7 +166,8 @@ class MatrixNioRoom(MatrixNioIdentifier, Room):
         )
 
     async def _join(self, username: str = None, password: str = None):
-        result = await self._client.join(self.id)
+        if self._client:
+            result = await self._client.join(self.id)
         if isinstance(result, nio.JoinError):
             raise MatrixNioRoomError(result)
 
@@ -190,7 +192,8 @@ class MatrixNioRoom(MatrixNioIdentifier, Room):
         )
 
     async def _leave(self, reason: str = None):
-        result = await self._client.room_leave(self.id)
+        if self._client:
+            result = await self._client.room_leave(self.id)
         if isinstance(result, nio.RoomLeaveError):
             raise MatrixNioRoomError(result)
 
@@ -241,8 +244,8 @@ class MatrixNioBackend(ErrBot):
         for key in ('email', 'auth_dict', 'site'):
             if key not in self.identity:
                 log.fatal(
-                    "You need to supply the key `{}` for me to use. `{key}` and its value "
-                    "can be found in your bot's `matrixniorc` config file.".format(key)
+                    f"You need to supply the key `{key}` for me to use. `{key}` and its value "
+                    "can be found in your bot's `matrixniorc` config file."
                 )
                 sys.exit(1)
         # Store the sync token in order to avoid replay of old messages.
