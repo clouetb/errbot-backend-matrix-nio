@@ -3,7 +3,6 @@ import sys
 
 from errbot.backends.base import RoomError, Identifier, Person, RoomOccupant, Room, Message, ONLINE
 from errbot.core import ErrBot
-
 from nio import LoginError, ClientConfig, SyncError
 
 log = logging.getLogger('errbot.backends.matrix-nio')
@@ -106,7 +105,6 @@ class MatrixNioPerson(MatrixNioIdentifier, Person):
         return ','.join(sorted(self._emails))
 
 
-# `MatrixNioRoom` is used for messages to streams.
 class MatrixNioRoom(MatrixNioIdentifier, Room):
     def __init__(self, id, client: nio.AsyncClient, title, subject=None):
         super().__init__(id)
@@ -158,42 +156,25 @@ class MatrixNioRoom(MatrixNioIdentifier, Room):
     def destroy(self) -> None:
         pass
 
-    def join(self, username: str = None, password: str = None):
-        asyncio.run_coroutine_threadsafe(
-            self._join(username, password),
-            asyncio.get_event_loop()
-        )
-
-    async def _join(self, username: str = None, password: str = None):
+    async def join(self, username: str = None, password: str = None):
+        result = None
         if self._client:
             result = await self._client.join(self.id)
-        if isinstance(result, nio.JoinError):
+        if isinstance(result, nio.responses.JoinError):
             raise MatrixNioRoomError(result)
 
-    def create(self):
-        asyncio.run_coroutine_threadsafe(
-            self._create(),
-            asyncio.get_event_loop()
-        )
-
-    async def _create(self):
+    async def create(self):
         result = await self._client.room_create(
             name=self.title,
             topic=self.subject
         )
-        if isinstance(result, nio.RoomCreateError):
+        if isinstance(result, nio.responses.RoomCreateError):
             raise MatrixNioRoomError(result)
 
-    def leave(self, reason: str = None):
-        asyncio.run_coroutine_threadsafe(
-            self._leave(reason),
-            asyncio.get_event_loop()
-        )
-
-    async def _leave(self, reason: str = None):
+    async def leave(self, reason: str = None):
         if self._client:
             result = await self._client.room_leave(self.id)
-        if isinstance(result, nio.RoomLeaveError):
+        if isinstance(result, nio.responses.RoomLeaveError):
             raise MatrixNioRoomError(result)
 
     @property
@@ -217,16 +198,22 @@ class MatrixNioRoom(MatrixNioIdentifier, Room):
             occupants.append(an_occupant)
         return occupants
 
-    def invite(self, *args):
-        for i in args:
-            result = self._client.room_invite(i.user_id)
+    async def invite(self, *args):
+        result_list = []
+        for i in args[0]:
+            result = await self._client.room_invite(i.user_id)
+            result_list.append(result)
+
+        if any(isinstance(x, nio.responses.RoomInviteError) for x in result_list):
+            raise MatrixNioRoomError(result_list)
 
 
 class MatrixNioRoomOccupant(MatrixNioPerson, RoomOccupant):
     """
     This class represents a person subscribed to a stream.
     """
-    def __init__(self, id, full_name, emails, client, room):
+
+    def __init__(self, id, full_name, client, emails=None, room=None):
         super().__init__(id=id, full_name=full_name, emails=emails, client=client)
         self._room = room
 
@@ -311,17 +298,17 @@ class MatrixNioBackend(ErrBot):
 
         message_instance = self.build_message(event.body)
         message_instance.frm = MatrixNioRoomOccupant(
-             id=event.sender,
-             full_name=room.user_name(event.sender),
-             emails=[event.sender],
-             client=self.client,
-             room=room.room_id
+            id=event.sender,
+            full_name=room.user_name(event.sender),
+            emails=[event.sender],
+            client=self.client,
+            room=room.room_id
         )
         room_instance = MatrixNioRoom(
-             id=room.room_id,
-             title=room.name,
-             subject=room.display_name,
-             client=self.client
+            id=room.room_id,
+            title=room.name,
+            subject=room.display_name,
+            client=self.client
         )
         message_instance.to = room_instance
         self.callback_message(message_instance)

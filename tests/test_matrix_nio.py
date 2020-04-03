@@ -1,9 +1,16 @@
+import logging
 import unittest
 from unittest import TestCase
+from unittest import mock
+from unittest.mock import call
 
+import aiounittest
 import nio
+from nio import MatrixUser
 
 import matrix_nio
+
+matrix_nio.log.setLevel(logging.DEBUG)
 
 
 class TestMatrixNioRoomError(TestCase):
@@ -86,22 +93,95 @@ class TestMatrixNioPerson(TestCase):
         self.assertEqual(self.person1.emails, emails)
 
 
-class TestMatrixNioRoom(TestCase):
+class TestMatrixNioRoom(aiounittest.AsyncTestCase):
     def __init__(self, method_name):
         super().__init__(method_name)
         self.client = nio.AsyncClient("test.matrix.org", user="test_user", device_id="test_device")
-        self.client.rooms = {"test_room": "empty_room", "other_test_room": "also_empty_room"}
-
+        self.owner = "an_owner"
         self.room_id = "test_room"
+        self.matrix_room1 = nio.MatrixRoom(self.owner, self.room_id)
+        self.client.rooms = {"test_room": self.matrix_room1, "other_test_room": "also_empty_room"}
+
         self.subject = "test_room"
         self.title = "A title"
+        self.topic = "a_topic"
+        self.display_name = "a_display_name"
         self.room1 = matrix_nio.MatrixNioRoom(self.room_id,
                                               client=self.client,
                                               title=self.title,
                                               subject=self.subject)
+        self.users = [
+            MatrixUser("12345", display_name="Charles de Gaulle"),
+            MatrixUser("54321", display_name="Georges Pompidou")
+        ]
+        self.occupants = [
+            matrix_nio.MatrixNioRoomOccupant("12345", "Charles de Gaulle", self.client),
+            matrix_nio.MatrixNioRoomOccupant("54321", "Georges Pompidou", self.client)
+        ]
+        self.room1.matrix_room.users = self.users
+        self.room1.matrix_room.own_user_id = self.owner
+        self.room1.matrix_room.topic = self.topic
+        self.room1.matrix_room.name = self.display_name
 
-    def test_matrix_nio_room(self):
+    def test_matrix_nio_room_creation(self):
         self.assertEqual(str(self.room1), self.room_id)
+
+    def test_matrix_nio_room_aclattr(self):
+        self.assertEqual(self.room1.aclattr, self.owner)
+
+    def test_matrix_nio_room_topic(self):
+        self.assertEqual(self.room1.topic, self.topic)
+
+    def test_matrix_nio_room_title(self):
+        self.assertEqual(self.room1.title, self.display_name)
+
+    async def test_matrix_nio_room_join(self):
+        client_join = mock.Mock(return_value=aiounittest.futurized("whatever"))
+        self.room1._client.join = client_join
+        await self.room1.join("discarded", "discarded")
+        client_join.assert_called_once_with(self.room_id)
+
+    async def test_matrix_nio_room_join_error(self):
+        client_join = mock.Mock(return_value=aiounittest.futurized(nio.responses.JoinError("Join Error")))
+        self.room1._client.join = client_join
+        with self.assertRaises(matrix_nio.MatrixNioRoomError):
+            await self.room1.join("discarded", "discarded")
+
+    async def test_matrix_nio_room_create(self):
+        client_create = mock.Mock(return_value=aiounittest.futurized("whatever"))
+        self.room1._client.room_create = client_create
+        await self.room1.create()
+        client_create.assert_called_once_with(name=self.display_name, topic=self.topic)
+
+    async def test_matrix_nio_room_create_error(self):
+        client_create = mock.Mock(return_value=aiounittest.futurized(nio.responses.RoomCreateError("Create Error")))
+        self.room1._client.room_create = client_create
+        with self.assertRaises(matrix_nio.MatrixNioRoomError):
+            await self.room1.create()
+
+    async def test_matrix_nio_room_leave(self):
+        client_leave = mock.Mock(return_value=aiounittest.futurized("whatever"))
+        self.room1._client.room_leave = client_leave
+        await self.room1.leave("a very good reason")
+        client_leave.assert_called_once_with(self.room_id)
+
+    async def test_matrix_nio_room_leave_error(self):
+        client_leave = mock.Mock(return_value=aiounittest.futurized(nio.responses.RoomLeaveError("Leave Error")))
+        self.room1._client.room_leave = client_leave
+        with self.assertRaises(matrix_nio.MatrixNioRoomError):
+            await self.room1.leave("a very good reason")
+
+    def test_matrix_nio_room_topic(self):
+        self.assertEqual(self.room1.topic, self.topic)
+
+    def test_matrix_nio_room_occupants(self):
+        self.assertEqual(self.room1.occupants, self.occupants)
+
+    async def test_matrix_nio_room_invite(self):
+        client_invite = mock.Mock(return_value=aiounittest.futurized(nio.responses.RoomInviteResponse))
+        self.room1._client.room_invite = client_invite
+        await self.room1.invite(self.users)
+        client_invite.assert_has_calls([call("12345"), call("54321")])
 
 
 class TestMatrixNioRoomOccupant(TestCase):
