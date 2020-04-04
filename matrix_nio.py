@@ -3,7 +3,7 @@ import sys
 
 from errbot.backends.base import RoomError, Identifier, Person, RoomOccupant, Room, Message, ONLINE
 from errbot.core import ErrBot
-from nio import LoginError, ClientConfig, SyncError
+from nio import LoginError, SyncError, AsyncClientConfig
 
 log = logging.getLogger('errbot.backends.matrix-nio')
 
@@ -235,7 +235,7 @@ class MatrixNioBackend(ErrBot):
                 )
                 sys.exit(1)
         # Store the sync token in order to avoid replay of old messages.
-        config = ClientConfig(store_sync_tokens=True)
+        config = AsyncClientConfig(store_sync_tokens=True)
         self.client = nio.AsyncClient(
             self.identity['site'],
             self.identity['email'],
@@ -269,7 +269,7 @@ class MatrixNioBackend(ErrBot):
                 self.has_synced = True
                 self.client.next_batch = sync_response.next_batch
                 # Only setup callback after first sync in order to avoid processing previous messages
-                self.client.add_event_callback(self._handle_message, nio.RoomMessageText)
+                self.client.add_event_callback(self.handle_message, nio.RoomMessageText)
                 log.info("End of first sync, now starting normal operation")
 
         except KeyboardInterrupt:
@@ -284,7 +284,7 @@ class MatrixNioBackend(ErrBot):
         finally:
             return
 
-    def _handle_message(self, room: nio.MatrixRoom, event: nio.Event):
+    def handle_message(self, room: nio.MatrixRoom, event: nio.Event):
         """
         Handles incoming messages.
         """
@@ -365,7 +365,7 @@ class MatrixNioBackend(ErrBot):
 
     @property
     def mode(self):
-        return 'matrix-nio'
+        return "matrix-nio"
 
     def query_room(self, room):
         return MatrixNioRoom(title=room, client=self.client)

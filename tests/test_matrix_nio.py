@@ -1,3 +1,4 @@
+import copy
 import logging
 import unittest
 from unittest import TestCase
@@ -215,6 +216,86 @@ class TestMatrixNioRoomOccupant(TestCase):
                                          client=self.client,
                                          subject=subject1)
         self.assertEqual(self.room_occupant1.room, room1)
+
+
+class TestMatrixNioBackend(aiounittest.AsyncTestCase):
+    def __init__(self, method_name):
+        super().__init__(method_name)
+
+        class Configuration(object):
+            pass
+
+        self.bot_config = Configuration()
+        self.bot_config.BOT_PREFIX = "BotPrefix"
+        self.bot_config.BOT_ASYNC = False
+        self.bot_config.BOT_ALT_PREFIX_CASEINSENSITIVE = "botprefix"
+        self.bot_config.BOT_ALT_PREFIXES = "anotherbotprefix"
+        self.bot_config.BOT_IDENTITY = {
+            "email": "test@test.org",
+            "site": "https://test.test.org",
+            "auth_dict": {
+                "type": "m.login.password",
+                "identifier": {
+                    "type": "m.id.thirdparty",
+                    "medium": "email",
+                    "address": "test@test.org"
+                },
+                "password": "SuperSecretPassword",
+                "initial_device_display_name": f"test-bot"
+            }
+        }
+
+    def test_matrix_nio_backend(self):
+        test_backend = matrix_nio.MatrixNioBackend(self.bot_config)
+        self.assertIsInstance(test_backend.client, nio.Client)
+        self.assertIsInstance(test_backend.client.config, nio.AsyncClientConfig)
+
+    def test_matrix_nio_backend_startup_error(self):
+        configuration_copy = copy.deepcopy(self.bot_config)
+        del (configuration_copy.BOT_IDENTITY["email"])
+        with self.assertRaises(SystemExit):
+            matrix_nio.MatrixNioBackend(configuration_copy)
+
+        configuration_copy = copy.deepcopy(self.bot_config)
+        del (configuration_copy.BOT_IDENTITY["auth_dict"])
+        with self.assertRaises(SystemExit):
+            matrix_nio.MatrixNioBackend(configuration_copy)
+
+        configuration_copy = copy.deepcopy(self.bot_config)
+        del (configuration_copy.BOT_IDENTITY["site"])
+        with self.assertRaises(SystemExit):
+            matrix_nio.MatrixNioBackend(configuration_copy)
+
+    def test_matrix_nio_backend_serve_once(self):
+        pass
+
+    def test_matrix_nio_backend_handle_message(self):
+        pass
+
+    def test_matrix_nio_backend_send_message(self):
+        pass
+
+    def test_matrix_nio_backend_is_from_self(self):
+        pass
+
+    def test_matrix_nio_backend_build_identifier(self):
+        pass
+
+    def test_matrix_nio_backend_build_reply(self):
+        pass
+
+    def test_matrix_nio_backend_mode(self):
+        mode = matrix_nio.MatrixNioBackend(self.bot_config).mode
+        self.assertEqual(mode, "matrix-nio")
+
+    def test_matrix_nio_backend_query_room(self):
+        pass
+
+    def test_matrix_nio_backend_rooms(self):
+        pass
+
+    def test_matrix_nio_backend_prefix_groupchat_reply(self):
+        pass
 
 
 if __name__ == '__main__':
