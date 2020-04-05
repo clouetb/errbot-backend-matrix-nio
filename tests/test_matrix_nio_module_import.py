@@ -28,7 +28,7 @@ class TestMatrixNioModuleImports(TestCase):
 
         builtins.__import__ = my_import
         with self.assertRaises(ImportError):
-            import importlib
+            import matrix_nio
             importlib.reload(matrix_nio)
 
 
