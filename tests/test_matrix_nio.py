@@ -15,34 +15,6 @@ import matrix_nio
 matrix_nio.log.setLevel(logging.DEBUG)
 
 
-class TestMatrixNioModuleImports(TestCase):
-    def test_import_error_asyncio(self):
-        real_import = builtins.__import__
-
-        def my_import(name, globals, locals, fromlist, level):
-            if name == "asyncio":
-                raise ImportError
-            return real_import(name, globals, locals, fromlist, level)
-
-        builtins.__import__ = my_import
-        with self.assertRaises(ImportError):
-            import importlib
-            importlib.reload(matrix_nio)
-
-    def test_import_error_asyncio(self):
-        real_import = builtins.__import__
-
-        def my_import(name, globals, locals, fromlist, level):
-            if name == "nio":
-                raise ImportError
-            return real_import(name, globals, locals, fromlist, level)
-
-        builtins.__import__ = my_import
-        with self.assertRaises(ImportError):
-            import importlib
-            importlib.reload(matrix_nio)
-
-
 class TestMatrixNioRoomError(TestCase):
     def test_room_error_with_value(self):
         room_error = matrix_nio.MatrixNioRoomError("A message")
