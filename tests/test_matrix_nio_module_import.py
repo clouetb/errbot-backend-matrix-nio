@@ -1,6 +1,7 @@
 import unittest
 from unittest import TestCase
 import builtins
+import importlib
 
 
 class TestMatrixNioModuleImports(TestCase):
@@ -15,6 +16,7 @@ class TestMatrixNioModuleImports(TestCase):
         builtins.__import__ = my_import
         with self.assertRaises(ImportError):
             import matrix_nio
+            importlib.reload(matrix_nio)
 
     def test_import_error_asyncio(self):
         real_import = builtins.__import__
@@ -26,7 +28,8 @@ class TestMatrixNioModuleImports(TestCase):
 
         builtins.__import__ = my_import
         with self.assertRaises(ImportError):
-            import matrix_nio
+            import importlib
+            importlib.reload(matrix_nio)
 
 
 if __name__ == '__main__':
