@@ -203,7 +203,6 @@ class MatrixNioRoom(MatrixNioIdentifier, Room):
         for i in args[0]:
             result = await self._client.room_invite(i.user_id)
             result_list.append(result)
-
         if any(isinstance(x, nio.responses.RoomInviteError) for x in result_list):
             raise MatrixNioRoomError(result_list)
 
@@ -288,9 +287,9 @@ class MatrixNioBackend(ErrBot):
         """
         Handles incoming messages.
         """
-        log.debug("Handle room message")
-        log.debug(f"Room: {room}")
-        log.debug(f"Event: {event}")
+        log.debug(f"Handle room message\n"
+                  f"Room: {room}\n"
+                  f"Event: {event}")
 
         if not isinstance(event, nio.RoomMessageText):
             log.warning("Unhandled message type (not a text message) ignored")

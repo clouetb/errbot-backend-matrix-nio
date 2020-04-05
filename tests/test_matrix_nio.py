@@ -1,3 +1,4 @@
+import builtins
 import copy
 import logging
 import unittest
@@ -12,6 +13,34 @@ from nio import MatrixUser
 import matrix_nio
 
 matrix_nio.log.setLevel(logging.DEBUG)
+
+
+class TestMatrixNioModuleImports(TestCase):
+    def test_import_error_asyncio(self):
+        real_import = builtins.__import__
+
+        def my_import(name, globals, locals, fromlist, level):
+            if name == "asyncio":
+                raise ImportError
+            return real_import(name, globals, locals, fromlist, level)
+
+        builtins.__import__ = my_import
+        with self.assertRaises(ImportError):
+            import importlib
+            importlib.reload(matrix_nio)
+
+    def test_import_error_asyncio(self):
+        real_import = builtins.__import__
+
+        def my_import(name, globals, locals, fromlist, level):
+            if name == "nio":
+                raise ImportError
+            return real_import(name, globals, locals, fromlist, level)
+
+        builtins.__import__ = my_import
+        with self.assertRaises(ImportError):
+            import importlib
+            importlib.reload(matrix_nio)
 
 
 class TestMatrixNioRoomError(TestCase):
@@ -92,6 +121,18 @@ class TestMatrixNioPerson(TestCase):
     def test_matrix_nio_person_emails(self):
         emails = ["charles@colombay.fr", "charles.degaulle@elysee.fr"]
         self.assertEqual(self.person1.emails, emails)
+
+    def test_matrix_nio_person_person(self):
+        self.assertEqual(self.person1.person, self.person_id)
+
+    def test_matrix_nio_person_full_name(self):
+        self.assertEqual(self.person1.fullname, self.full_name)
+
+    def test_matrix_nio_person_nick(self):
+        self.assertEqual(self.person1.nick, self.full_name)
+
+    def test_matrix_nio_person_client(self):
+        self.assertEqual(self.person1.client, self.client)
 
 
 class TestMatrixNioRoom(aiounittest.AsyncTestCase):
@@ -179,9 +220,24 @@ class TestMatrixNioRoom(aiounittest.AsyncTestCase):
         self.assertEqual(self.room1.occupants, self.occupants)
 
     async def test_matrix_nio_room_invite(self):
-        client_invite = mock.Mock(return_value=aiounittest.futurized(nio.responses.RoomInviteResponse))
+        client_invite = mock.Mock(
+            return_value=aiounittest.futurized(
+                nio.responses.RoomInviteResponse()
+            )
+        )
         self.room1._client.room_invite = client_invite
         await self.room1.invite(self.users)
+        client_invite.assert_has_calls([call("12345"), call("54321")])
+
+    async def test_matrix_nio_room_invite_error(self):
+        client_invite = mock.Mock(
+            return_value=aiounittest.futurized(
+                nio.responses.RoomInviteError("Invite Error")
+            )
+        )
+        self.room1._client.room_invite = client_invite
+        with self.assertRaises(matrix_nio.MatrixNioRoomError):
+            await self.room1.invite(self.users)
         client_invite.assert_has_calls([call("12345"), call("54321")])
 
 
