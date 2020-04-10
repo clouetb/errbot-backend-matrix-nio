@@ -3,7 +3,7 @@ import sys
 
 from errbot.backends.base import RoomError, Identifier, Person, RoomOccupant, Room, Message, ONLINE
 from errbot.core import ErrBot
-from nio import LoginError, SyncError, AsyncClientConfig
+from nio import LoginError, SyncError, AsyncClientConfig, RoomSendResponse
 
 log = logging.getLogger('errbot.backends.matrix-nio')
 
@@ -32,8 +32,8 @@ class MatrixNioRoomError(RoomError):
 
 
 class MatrixNioIdentifier(Identifier):
-    def __init__(self, id):
-        self._id = str(id)
+    def __init__(self, an_id):
+        self._id = str(an_id)
 
     @property
     def id(self):
@@ -50,8 +50,8 @@ class MatrixNioIdentifier(Identifier):
 
 # `MatrixNioPerson` is used for both 1-1 PMs and Group PMs.
 class MatrixNioPerson(MatrixNioIdentifier, Person):
-    def __init__(self, id, client: nio.AsyncClient, full_name, emails):
-        super().__init__(id)
+    def __init__(self, an_id, client: nio.AsyncClient, full_name, emails):
+        super().__init__(an_id)
         self._full_name = full_name
         self._emails = emails
         self._client = client
@@ -106,12 +106,12 @@ class MatrixNioPerson(MatrixNioIdentifier, Person):
 
 
 class MatrixNioRoom(MatrixNioIdentifier, Room):
-    def __init__(self, id, client: nio.AsyncClient, title, subject=None):
-        super().__init__(id)
+    def __init__(self, an_id, client: nio.AsyncClient, title, subject=None):
+        super().__init__(an_id)
         self._title = title
         self._subject = subject
         self._client = client
-        self.matrix_room = self._client.rooms[id]
+        self.matrix_room = self._client.rooms[an_id]
 
     @property
     def id(self):
@@ -194,7 +194,7 @@ class MatrixNioRoom(MatrixNioIdentifier, Room):
         users = self.matrix_room.users
         occupants = []
         for i in users:
-            an_occupant = MatrixNioRoomOccupant(id=i.user_id, full_name=i.display_name, client=self._client)
+            an_occupant = MatrixNioRoomOccupant(i.user_id, full_name=i.display_name, client=self._client)
             occupants.append(an_occupant)
         return occupants
 
@@ -212,8 +212,8 @@ class MatrixNioRoomOccupant(MatrixNioPerson, RoomOccupant):
     This class represents a person subscribed to a stream.
     """
 
-    def __init__(self, id, full_name, client, emails=None, room=None):
-        super().__init__(id=id, full_name=full_name, emails=emails, client=client)
+    def __init__(self, an_id, full_name, client, emails=None, room=None):
+        super().__init__(an_id, full_name=full_name, emails=emails, client=client)
         self._room = room
 
     @property
@@ -297,14 +297,14 @@ class MatrixNioBackend(ErrBot):
 
         message_instance = self.build_message(event.body)
         message_instance.frm = MatrixNioRoomOccupant(
-            id=event.sender,
+            event.sender,
             full_name=room.user_name(event.sender),
             emails=[event.sender],
             client=self.client,
             room=room.room_id
         )
         room_instance = MatrixNioRoom(
-            id=room.room_id,
+            room.room_id,
             title=room.name,
             subject=room.display_name,
             client=self.client
@@ -314,27 +314,25 @@ class MatrixNioBackend(ErrBot):
 
     def send_message(self, msg: Message):
         log.debug(f"Sending message {msg}")
-        asyncio.run_coroutine_threadsafe(self._send_message(msg), asyncio.get_event_loop())
+        super().send_message(msg)
+        result = self._send_message(msg)
+        return result
 
     async def _send_message(self, msg: Message):
-        log.debug("Inside coroutine _send_message")
         msg_data = {
             'msgtype': "m.text",
             'body': msg.body
         }
-        try:
-            result = await self.client.room_send(
-                room_id=msg.to.room,
-                message_type='m.room.message',
-                content=msg_data
-            )
-            log.debug(f"After send message : {result}")
-        except Exception:
-            log.exception(
-                f"An exception occurred while trying to send the following message "
-                f"to {msg.to.id}: {msg.body}"
-            )
-            raise
+        result = await self.client.room_send(
+            room_id=msg.to,
+            message_type='m.room.message',
+            content=msg_data
+        )
+        if isinstance(result, RoomSendResponse):
+            return result
+        else:
+            raise ValueError(f"An exception occurred while trying to send the following message "
+                             f"to {msg.to}: {msg.body}\n{result}")
 
     def connect_callback(self) -> None:
         pass
@@ -343,7 +341,7 @@ class MatrixNioBackend(ErrBot):
         pass
 
     def is_from_self(self, msg: Message):
-        return msg.frm.aclattr == self.client.user_id
+        return msg.frm.id == self.client.user
 
     def change_presence(self, status: str = ONLINE, message: str = '') -> None:
         # At this time, this backend doesn't support presence
@@ -351,15 +349,21 @@ class MatrixNioBackend(ErrBot):
 
     async def build_identifier(self, txtrep):
         log.debug(f"Build id : {txtrep}")
-        profile = await self.client.get_profile(txtrep)
-        return MatrixNioPerson(id=txtrep,
-                               full_name=profile.displayname,
-                               emails=[txtrep],
-                               client=self.client)
+        profile = await asyncio.gather(
+            self.client.get_profile(txtrep)
+        )
+        if len(profile) == 1 and isinstance(profile[0], nio.responses.ProfileGetResponse):
+            return MatrixNioPerson(txtrep,
+                                   full_name=profile[0].displayname,
+                                   emails=[txtrep],
+                                   client=self.client)
+        else:
+            raise ValueError(f"An error occured while fetching identifier: {profile}")
 
     def build_reply(self, msg, text=None, private=False, threaded=False):
-        response = self.build_message(text)
-        response.to = msg.to
+        # TODO : Include marker for threaded response
+        response = self.build_message(f"{msg.body}\n{text}")
+        response.to = msg.frm
         return response
 
     @property
@@ -370,14 +374,21 @@ class MatrixNioBackend(ErrBot):
         return MatrixNioRoom(title=room, client=self.client)
 
     def rooms(self):
-        asyncio.run_coroutine_threadsafe(
-            self._rooms(),
-            asyncio.get_event_loop()
-        )
+        result = self._rooms()
+        return result
 
     async def _rooms(self):
-        result = await self.client.joined_rooms()
-        return [MatrixNioRoom(title=subscription, id=subscription) for subscription in result]
+        result = await asyncio.gather(
+            self.client.joined_rooms()
+        )
+        if len(result) == 1 and isinstance(result[0], nio.responses.JoinedRoomsResponse):
+            result = result[0]
+        else:
+            raise ValueError(f"An error occured while fetching joined rooms: {result}")
+        rooms = []
+        for room_name in result.rooms:
+            rooms.append(MatrixNioRoom(room_name, self.client, title=room_name))
+        return rooms
 
     def prefix_groupchat_reply(self, message, identifier):
         super().prefix_groupchat_reply(message, identifier)

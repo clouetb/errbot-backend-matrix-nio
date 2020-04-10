@@ -18,7 +18,7 @@ class TestMatrixNioModuleImports(TestCase):
             import matrix_nio
             importlib.reload(matrix_nio)
 
-    def test_import_error_asyncio(self):
+    def test_import_error_nio(self):
         real_import = builtins.__import__
 
         def my_import(name, globals, locals, fromlist, level):

@@ -1,4 +1,4 @@
-import builtins
+import asyncio
 import copy
 import logging
 import unittest
@@ -8,7 +8,10 @@ from unittest.mock import call
 
 import aiounittest
 import nio
-from nio import MatrixUser
+from errbot import Message
+from errbot.core import ErrBot
+from nio import MatrixUser, JoinedRoomsResponse, JoinedRoomsError, ProfileGetResponse, ProfileGetError, \
+    RoomSendResponse, ErrorResponse, RoomMessageText, RoomMessageEmote
 
 import matrix_nio
 
@@ -185,9 +188,6 @@ class TestMatrixNioRoom(aiounittest.AsyncTestCase):
         with self.assertRaises(matrix_nio.MatrixNioRoomError):
             await self.room1.leave("a very good reason")
 
-    def test_matrix_nio_room_topic(self):
-        self.assertEqual(self.room1.topic, self.topic)
-
     def test_matrix_nio_room_occupants(self):
         self.assertEqual(self.room1.occupants, self.occupants)
 
@@ -232,8 +232,8 @@ class TestMatrixNioRoomOccupant(TestCase):
         self.emails = ["charles@colombay.fr", "charles.degaulle@elysee.fr"]
         self.room_occupant1 = matrix_nio.MatrixNioRoomOccupant(self.person_id,
                                                                self.full_name,
-                                                               self.emails,
                                                                self.client,
+                                                               self.emails,
                                                                self.room1)
 
     def test_matrix_nio_room_occupant(self):
@@ -298,19 +298,244 @@ class TestMatrixNioBackend(aiounittest.AsyncTestCase):
         pass
 
     def test_matrix_nio_backend_handle_message(self):
-        pass
+        backend = matrix_nio.MatrixNioBackend(self.bot_config)
+        backend.client = nio.AsyncClient("test.matrix.org",
+                                         user="test_user",
+                                         device_id="test_device"
+                                         )
+        backend.client.rooms = {"test_room": "Test Room", "other_test_room": "Test Room"}
+        message_body = "Test message"
+        test_message = RoomMessageText.from_dict({
+            "content": {
+                "body": message_body,
+                "msgtype": "m.text"
+            },
+            "event_id": "$15163623196QOZxj:localhost",
+            "origin_server_ts": 1516362319505,
+            "room_id": "!SVkFJHzfwvuaIEawgC:localhost",
+            "sender": "@example:localhost",
+            "type": "m.room.message",
+            "unsigned": {
+                "age": 43464955731
+            },
+            "user_id": "@example:localhost",
+            "age": 43464955731
+        })
+        test_room = nio.MatrixRoom("test_room",
+                                   "test_user")
+        test_message.to = test_room
+        callback = mock.Mock()
+        ErrBot.callback_message = callback
+        backend.build_message = mock.Mock()
+        backend.handle_message(test_room, test_message)
+        callback.assert_called_once()
+        backend.build_message.assert_called_once_with(test_message.body)
 
-    def test_matrix_nio_backend_send_message(self):
-        pass
+    def test_matrix_nio_backend_handle_unsupported_message(self):
+        backend = matrix_nio.MatrixNioBackend(self.bot_config)
+        backend.client = nio.AsyncClient("test.matrix.org",
+                                         user="test_user",
+                                         device_id="test_device"
+                                         )
+        backend.client.rooms = {"test_room": "Test Room", "other_test_room": "Test Room"}
+        message_body = "Test message"
+        test_message = RoomMessageEmote.from_dict({
+            "content": {
+                "body": message_body,
+                "msgtype": "m.emote"
+            },
+            "event_id": "$15163623196QOZxj:localhost",
+            "origin_server_ts": 1516362319505,
+            "room_id": "!SVkFJHzfwvuaIEawgC:localhost",
+            "sender": "@example:localhost",
+            "type": "m.room.message",
+            "unsigned": {
+                "age": 43464955731
+            },
+            "user_id": "@example:localhost",
+            "age": 43464955731
+        })
+        test_room = nio.MatrixRoom("test_room",
+                                   "test_user")
+        test_message.to = test_room
+        callback = mock.Mock()
+        ErrBot.callback_message = callback
+        backend.handle_message(test_room, test_message)
+        callback.assert_not_called()
+
+    async def test_matrix_nio_backend_send_message(self):
+        backend = matrix_nio.MatrixNioBackend(self.bot_config)
+        test_server = "test.matrix.org"
+        test_user = f"@test_user:{test_server}"
+        event_id = "1234567890"
+        room_id = "test_room"
+        backend.client = nio.AsyncClient(test_server, user=test_user, device_id="test_device")
+        backend.client.rooms = {"test_room": "Test Room", "other_test_room": "Test Room"}
+        ErrBot.send_message = mock.Mock()
+        backend.client.room_send = mock.Mock(
+            return_value=aiounittest.futurized(
+                RoomSendResponse.from_dict({
+                    "event_id": event_id
+                },
+                    room_id)
+            )
+        )
+        message_text = "Test message"
+        test_message = Message(message_text,
+                               matrix_nio.MatrixNioPerson("an_id",
+                                                          client=backend.client,
+                                                          emails=["test@test.org"],
+                                                          full_name=""
+                                                          )
+                               )
+        test_message.to = matrix_nio.MatrixNioRoom("test_room",
+                                                   client=backend.client,
+                                                   title="A title")
+        result = await asyncio.gather(
+            backend.send_message(test_message)
+        )
+        result = result[0]
+        self.assertIsInstance(result, RoomSendResponse)
+        self.assertEqual(result.room_id, room_id)
+        self.assertEqual(result.event_id, event_id)
+        # TODO: Add assert called once with
+        backend.client.room_send.assert_called_once()
+
+    async def test_matrix_nio_backend_send_message_error(self):
+        backend = matrix_nio.MatrixNioBackend(self.bot_config)
+        test_server = "test.matrix.org"
+        test_user = f"@test_user:{test_server}"
+        event_id = "1234567890"
+        room_id = "test_room"
+        backend.client = nio.AsyncClient(test_server, user=test_user, device_id="test_device")
+        backend.client.rooms = {"test_room": "Test Room", "other_test_room": "Test Room"}
+        ErrBot.send_message = mock.Mock()
+        backend.client.room_send = mock.Mock(
+            return_value=aiounittest.futurized(
+                ErrorResponse.from_dict({
+                    "errcode": "ERROR_SENDING_MESSAGE",
+                    "error": "Error sending message",
+                    "retry_after_ms": 10000
+                })
+            )
+        )
+        message_text = "Test message"
+        test_message = Message(message_text,
+                               matrix_nio.MatrixNioPerson("an_id",
+                                                          client=backend.client,
+                                                          emails=["test@test.org"],
+                                                          full_name=""
+                                                          )
+                               )
+        test_message.to = matrix_nio.MatrixNioRoom("test_room",
+                                                   client=backend.client,
+                                                   title="A title")
+        with self.assertRaises(ValueError):
+            result = await asyncio.gather(
+                backend.send_message(test_message)
+            )
+        backend.client.room_send.assert_called_once()
+        # TODO: Add assert called once with
 
     def test_matrix_nio_backend_is_from_self(self):
-        pass
+        backend = matrix_nio.MatrixNioBackend(self.bot_config)
+        test_user_id = "test_user"
+        backend.client = nio.AsyncClient("test.matrix.org",
+                                         user=test_user_id,
+                                         device_id="test_device"
+                                         )
+        message_text = "Test message"
+        test_message = Message(message_text,
+                               matrix_nio.MatrixNioPerson(test_user_id,
+                                                          client=backend.client,
+                                                          emails=["test@test.org"],
+                                                          full_name=""
+                                                          )
+                               )
+        self.assertTrue(backend.is_from_self(test_message))
 
-    def test_matrix_nio_backend_build_identifier(self):
-        pass
+    def test_matrix_nio_backend_is_not_from_self(self):
+        backend = matrix_nio.MatrixNioBackend(self.bot_config)
+        test_user_id = "test_user"
+        backend.client = nio.AsyncClient("test.matrix.org",
+                                         user=test_user_id,
+                                         device_id="test_device"
+                                         )
+        message_text = "Test message"
+        response_text = "A response"
+        test_message = Message(message_text,
+                               matrix_nio.MatrixNioPerson("another_test_user_id",
+                                                          client=backend.client,
+                                                          emails=["test@test.org"],
+                                                          full_name=""
+                                                          )
+                               )
+        self.assertFalse(backend.is_from_self(test_message))
+
+    async def test_matrix_nio_backend_build_identifier(self):
+        backend = matrix_nio.MatrixNioBackend(self.bot_config)
+        backend.client = nio.AsyncClient("test.matrix.org",
+                                         user="test_user",
+                                         device_id="test_device"
+                                         )
+        test_name = "Test Name"
+        backend.client.get_profile = mock.Mock(
+            return_value=aiounittest.futurized(
+                ProfileGetResponse.from_dict({
+                    "displayname": test_name,
+                    "avatar_url": "http://test.org/avatar.png"
+                })
+            )
+        )
+        test_id = "test_id"
+        test_identifier = await asyncio.gather(
+            backend.build_identifier(test_id)
+        )
+        test_identifier = test_identifier[0]
+        self.assertIsInstance(test_identifier, matrix_nio.MatrixNioPerson)
+        self.assertEqual(test_identifier.id, test_id)
+        self.assertEqual(test_identifier.fullname, test_name)
+
+    async def test_matrix_nio_backend_build_identifier_error(self):
+        backend = matrix_nio.MatrixNioBackend(self.bot_config)
+        backend.client = nio.AsyncClient("test.matrix.org",
+                                         user="test_user",
+                                         device_id="test_device"
+                                         )
+        backend.client.get_profile = mock.Mock(
+            return_value=aiounittest.futurized(
+                ProfileGetError.from_dict({
+                    "errcode": "ERROR_GETTING_PROFILE",
+                    "error": "Error fetching profile",
+                    "retry_after_ms": 10000
+                })
+            )
+        )
+        test_id = "test_id"
+        with self.assertRaises(ValueError):
+            test_identifier = await asyncio.gather(
+                backend.build_identifier(test_id)
+            )
 
     def test_matrix_nio_backend_build_reply(self):
-        pass
+        backend = matrix_nio.MatrixNioBackend(self.bot_config)
+        backend.client = nio.AsyncClient("test.matrix.org",
+                                         user="test_user",
+                                         device_id="test_device"
+                                         )
+        message_text = "Test message"
+        response_text = "A response"
+        test_message = Message(message_text,
+                               matrix_nio.MatrixNioPerson("an_id",
+                                                          client=backend.client,
+                                                          emails=["test@test.org"],
+                                                          full_name=""
+                                                          )
+                               )
+        response = backend.build_reply(test_message, response_text)
+        self.assertIsInstance(response, Message)
+        self.assertEqual(response.to, test_message.frm)
+        self.assertEqual(response.body, f"{message_text}\n{response_text}")
 
     def test_matrix_nio_backend_mode(self):
         mode = matrix_nio.MatrixNioBackend(self.bot_config).mode
@@ -319,8 +544,50 @@ class TestMatrixNioBackend(aiounittest.AsyncTestCase):
     def test_matrix_nio_backend_query_room(self):
         pass
 
-    def test_matrix_nio_backend_rooms(self):
-        pass
+    async def test_matrix_nio_backend_rooms(self):
+        backend = matrix_nio.MatrixNioBackend(self.bot_config)
+        backend.client = nio.AsyncClient("test.matrix.org", user="test_user", device_id="test_device")
+        room_id1 = "test_room"
+        room_id2 = "another_test_room"
+        backend.client.rooms = {
+            room_id1: room_id1,
+            room_id2: room_id2
+        }
+
+        backend.client.joined_rooms = mock.Mock(
+            return_value=aiounittest.futurized(
+                JoinedRoomsResponse.from_dict({
+                    "joined_rooms": [room_id1, room_id2]
+                })
+            )
+        )
+
+        result = await asyncio.gather(
+            backend.rooms()
+        )
+        result = result[0]
+        result = [a_result.id for a_result in result]
+        self.assertIn(room_id1, result)
+        self.assertIn(room_id2, result)
+
+    async def test_matrix_nio_backend_rooms_error(self):
+        backend = matrix_nio.MatrixNioBackend(self.bot_config)
+        backend.client = nio.AsyncClient("test.matrix.org", user="test_user", device_id="test_device")
+
+        backend.client.joined_rooms = mock.Mock(
+            return_value=aiounittest.futurized(
+                JoinedRoomsError.from_dict({
+                    "errcode": "ERROR_FETCHING_SUBSCRIBED_ROOMS",
+                    "error": "Error fetching subscribed rooms",
+                    "retry_after_ms": 10000
+                }
+                )
+            )
+        )
+        with self.assertRaises(ValueError):
+            result = await asyncio.gather(
+                backend.rooms()
+            )
 
     def test_matrix_nio_backend_prefix_groupchat_reply(self):
         pass
