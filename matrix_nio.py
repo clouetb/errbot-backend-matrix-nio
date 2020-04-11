@@ -3,7 +3,7 @@ import sys
 
 from errbot.backends.base import RoomError, Identifier, Person, RoomOccupant, Room, Message, ONLINE
 from errbot.core import ErrBot
-from nio import LoginError, AsyncClientConfig, RoomSendResponse, ErrorResponse
+from nio import LoginError, AsyncClientConfig, RoomSendResponse, ErrorResponse, JoinedRoomsError, RoomForgetError
 
 log = logging.getLogger('errbot.backends.matrix-nio')
 
@@ -147,14 +147,20 @@ class MatrixNioRoom(MatrixNioIdentifier, Room):
 
     @property
     def exists(self) -> bool:
-        pass
+        rooms_list = list(self._client.rooms.keys())
+        return self.id in rooms_list
 
     @property
     def joined(self) -> bool:
-        pass
+        joined_rooms = asyncio.get_event_loop().run_until_complete(self._client.joined_rooms())
+        if isinstance(joined_rooms, JoinedRoomsError):
+            raise ValueError(f"Error while fetching joined rooms {joined_rooms}")
+        return self.id in joined_rooms.rooms
 
     def destroy(self) -> None:
-        pass
+        result = asyncio.get_event_loop().run_until_complete(self._client.room_forget(self.id))
+        if isinstance(result, RoomForgetError):
+            raise ValueError(f"Error while forgetting/destroying room {result}")
 
     async def join(self, username: str = None, password: str = None):
         result = None

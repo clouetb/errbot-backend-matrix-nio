@@ -1,5 +1,6 @@
 import asyncio
 import copy
+import json
 import logging
 import unittest
 from unittest import TestCase
@@ -11,7 +12,7 @@ import nio
 from errbot import Message
 from errbot.core import ErrBot
 from nio import MatrixUser, JoinedRoomsResponse, JoinedRoomsError, ProfileGetResponse, ProfileGetError, \
-    RoomSendResponse, ErrorResponse, RoomMessageText, RoomMessageEmote, LoginResponse, LoginError
+    RoomSendResponse, ErrorResponse, RoomMessageText, RoomMessageEmote, LoginResponse, LoginError, SyncResponse
 
 import matrix_nio
 
@@ -212,6 +213,105 @@ class TestMatrixNioRoom(aiounittest.AsyncTestCase):
             await self.room1.invite(self.users)
         client_invite.assert_has_calls([call("12345"), call("54321")])
 
+    def test_matrix_nio_room_exists(self):
+        matrix_client = nio.AsyncClient("test.matrix.org", user="test_user", device_id="test_device")
+        nio_room1 = nio.MatrixRoom("nio_room1", "room1_owner")
+        nio_room2 = nio.MatrixRoom("nio_room2", "room2_owner")
+        matrix_rooms = {
+            "nio_room1": nio_room1,
+            "nio_room2": nio_room2
+        }
+        matrix_client.rooms = matrix_rooms
+        errbot_nio_room1 = matrix_nio.MatrixNioRoom("nio_room1",
+                                                    client=matrix_client,
+                                                    title="nio_room1 title",
+                                                    subject="nio_room1 subject")
+        errbot_nio_room2 = matrix_nio.MatrixNioRoom("nio_room2",
+                                                    client=matrix_client,
+                                                    title="nio_room2 title",
+                                                    subject="nio_room2 subject")
+        del matrix_client.rooms[errbot_nio_room2.id]
+        result1 = errbot_nio_room1.exists
+        result2 = errbot_nio_room2.exists
+        self.assertTrue(result1)
+        self.assertFalse(result2)
+
+    def test_matrix_nio_room_joined(self):
+        matrix_client = nio.AsyncClient("test.matrix.org", user="test_user", device_id="test_device")
+        joined_nio_room1 = nio.MatrixRoom("nio_room1", "room1_owner")
+        joined_nio_room2 = nio.MatrixRoom("nio_room2", "room2_owner")
+        joined_matrix_rooms = {
+            "nio_room1": joined_nio_room1,
+            "nio_room2": joined_nio_room2
+        }
+        matrix_client.rooms = joined_matrix_rooms
+        errbot_nio_room1 = matrix_nio.MatrixNioRoom("nio_room1",
+                                                    client=matrix_client,
+                                                    title="nio_room1 title",
+                                                    subject="nio_room1 subject")
+        errbot_nio_room2 = matrix_nio.MatrixNioRoom("nio_room2",
+                                                    client=matrix_client,
+                                                    title="nio_room2 title",
+                                                    subject="nio_room2 subject")
+        matrix_client.joined_rooms = mock.Mock(
+            return_value=aiounittest.futurized(
+                JoinedRoomsResponse.from_dict({
+                    "joined_rooms": ["nio_room1", "nio_room2"]
+                })
+
+            )
+        )
+        # joined = True
+        result1 = errbot_nio_room1.joined
+        self.assertTrue(result1)
+        matrix_client.joined_rooms.assert_called_once()
+        matrix_client.joined_rooms = mock.Mock(
+            return_value=aiounittest.futurized(
+                JoinedRoomsResponse.from_dict({
+                    "joined_rooms": ["nio_room1"]
+                })
+
+            )
+        )
+        # joined = false
+        result2 = errbot_nio_room2.joined
+        self.assertFalse(result2)
+        matrix_client.joined_rooms.assert_called_once()
+
+    def test_matrix_nio_joined_room_error(self):
+        matrix_client = nio.AsyncClient("test.matrix.org", user="test_user", device_id="test_device")
+        joined_nio_room1 = nio.MatrixRoom("nio_room1", "room1_owner")
+        joined_matrix_rooms = {
+            "nio_room1": joined_nio_room1
+        }
+        matrix_client.rooms = joined_matrix_rooms
+        errbot_nio_room1 = matrix_nio.MatrixNioRoom("nio_room1",
+                                                    client=matrix_client,
+                                                    title="nio_room1 title",
+                                                    subject="nio_room1 subject")
+        matrix_client.joined_rooms = mock.Mock(
+            return_value=aiounittest.futurized(
+                JoinedRoomsError.from_dict({
+                    "errcode": "ERROR_FETCHING_JOINED_ROOMS",
+                    "error": "Error fetching joined rooms",
+                    "retry_after_ms": 10000
+
+                })
+
+            )
+        )
+        result = None
+        with self.assertRaises(ValueError):
+            result = errbot_nio_room1.joined
+        self.assertIsNone(result)
+        matrix_client.joined_rooms.assert_called_once()
+
+    def test_matrix_nio_room_destroy(self):
+        pass
+
+    def test_matrix_nio_room_destroy_error(self):
+        pass
+
 
 class TestMatrixNioRoomOccupant(TestCase):
     def __init__(self, method_name):
@@ -308,6 +408,24 @@ class TestMatrixNioBackend(aiounittest.AsyncTestCase):
         backend.client.sync_forever = sync_forever_mock
         backend.serve_once()
         sync_forever_mock.assert_called_once_with(30000, full_state=True)
+
+    def test_matrix_nio_backend_serve_once_logged_in_has_not_synced(self):
+        backend = matrix_nio.MatrixNioBackend(self.bot_config)
+        backend.client = nio.AsyncClient("test.matrix.org", user="test_user", device_id="test_device")
+        # Needed for ensuring that backend.client.logged_in = True
+        backend.client.access_token = True
+        with open("sync.json") as json_file:
+            data = json.load(json_file)
+        sync_mock = mock.Mock(
+            return_value=aiounittest.futurized(
+                SyncResponse.from_dict(data)
+            )
+        )
+        backend.client.sync = sync_mock
+        backend.serve_once()
+        self.assertTrue(backend.has_synced)
+        self.assertEqual(backend.client.next_batch, data["next_batch"])
+        sync_mock.assert_called_once_with(full_state=True)
 
     def test_matrix_nio_backend_serve_once_logged_keyboard_interrupt(self):
         backend = matrix_nio.MatrixNioBackend(self.bot_config)
