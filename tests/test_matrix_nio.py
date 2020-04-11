@@ -640,7 +640,7 @@ class TestMatrixNioBackend(aiounittest.AsyncTestCase):
         backend.client.access_token = True
         # Temporarily disabled
         #with open("sync.json") as json_file:
-        data = json.load(fucking_string)
+        data = json.loads(fucking_string)
         sync_mock = mock.Mock(
             return_value=aiounittest.futurized(
                 SyncResponse.from_dict(data)
