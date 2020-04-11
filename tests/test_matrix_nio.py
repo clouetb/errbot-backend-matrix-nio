@@ -13,7 +13,8 @@ import nio
 from errbot import Message
 from errbot.core import ErrBot
 from nio import MatrixUser, JoinedRoomsResponse, JoinedRoomsError, ProfileGetResponse, ProfileGetError, \
-    RoomSendResponse, ErrorResponse, RoomMessageText, RoomMessageEmote, LoginResponse, LoginError, SyncResponse
+    RoomSendResponse, ErrorResponse, RoomMessageText, RoomMessageEmote, LoginResponse, LoginError, SyncResponse, \
+    RoomForgetError, RoomForgetResponse
 
 import matrix_nio
 
@@ -308,10 +309,53 @@ class TestMatrixNioRoom(aiounittest.AsyncTestCase):
         matrix_client.joined_rooms.assert_called_once()
 
     def test_matrix_nio_room_destroy(self):
-        pass
+        matrix_client = nio.AsyncClient("test.matrix.org", user="test_user", device_id="test_device")
+        room1 = nio.MatrixRoom("nio_room1", "room1_owner")
+        rooms = {
+            "nio_room1": room1
+        }
+        matrix_client.rooms = rooms
+        nio_room1 = matrix_nio.MatrixNioRoom("nio_room1",
+                                             client=matrix_client,
+                                             title="nio_room1 title",
+                                             subject="nio_room1 subject")
+        matrix_client.room_forget = mock.Mock(
+            return_value=aiounittest.futurized(
+                RoomForgetResponse.from_dict({
+                },
+                    "nio_room1")
+            )
+        )
+        nio_room1.destroy()
+        matrix_client.room_forget.assert_called_once_with("nio_room1")
+
 
     def test_matrix_nio_room_destroy_error(self):
-        pass
+        matrix_client = nio.AsyncClient("test.matrix.org", user="test_user", device_id="test_device")
+        room1 = nio.MatrixRoom("nio_room1", "room1_owner")
+        rooms = {
+            "nio_room1": room1
+        }
+        matrix_client.rooms = rooms
+        nio_room1 = matrix_nio.MatrixNioRoom("nio_room1",
+                                             client=matrix_client,
+                                             title="nio_room1 title",
+                                             subject="nio_room1 subject")
+        matrix_client.room_forget = mock.Mock(
+            return_value=aiounittest.futurized(
+                RoomForgetError.from_dict({
+                    "errcode": "ERROR_DESTROYING_ROOM",
+                    "error": "Error destroying room",
+                    "retry_after_ms": 10000,
+                    "soft_logout": "false"
+                },
+                    "nio_room1")
+
+            )
+        )
+        with self.assertRaises(ValueError):
+            nio_room1.destroy()
+        matrix_client.room_forget.assert_called_once_with("nio_room1")
 
 
 class TestMatrixNioRoomOccupant(TestCase):
@@ -415,7 +459,7 @@ class TestMatrixNioBackend(aiounittest.AsyncTestCase):
         backend.client = nio.AsyncClient("test.matrix.org", user="test_user", device_id="test_device")
         # Needed for ensuring that backend.client.logged_in = True
         backend.client.access_token = True
-
+        # Needed since path may be tricky to get
         with open(os.path.join(os.path.dirname(__file__), "sync.json")) as json_file:
             data = json.loads(json_file.read())
 

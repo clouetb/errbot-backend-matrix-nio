@@ -336,15 +336,18 @@ class MatrixNioBackend(ErrBot):
                              f"to {msg.to}: {msg.body}\n{result}")
 
     def connect_callback(self) -> None:
+        # TODO implement this
         pass
 
     def disconnect_callback(self) -> None:
+        # TODO implement this
         pass
 
     def is_from_self(self, msg: Message):
         return msg.frm.id == self.client.user
 
     def change_presence(self, status: str = ONLINE, message: str = '') -> None:
+        # TODO implement this
         # At this time, this backend doesn't support presence
         pass
 
