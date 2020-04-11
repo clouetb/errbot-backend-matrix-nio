@@ -3,7 +3,7 @@ import sys
 
 from errbot.backends.base import RoomError, Identifier, Person, RoomOccupant, Room, Message, ONLINE
 from errbot.core import ErrBot
-from nio import LoginError, SyncError, AsyncClientConfig, RoomSendResponse
+from nio import LoginError, AsyncClientConfig, RoomSendResponse, ErrorResponse
 
 log = logging.getLogger('errbot.backends.matrix-nio')
 
@@ -250,38 +250,33 @@ class MatrixNioBackend(ErrBot):
             if not self.client.logged_in:
                 log.info("Initializing connection")
                 login_response = await self.client.login_raw(self.identity['auth_dict'])
-                log.info(f"Login result: {login_response}")
                 if isinstance(login_response, LoginError):
-                    raise
+                    log.error(f"Failed login result: {login_response}")
+                    raise ValueError(login_response)
                 self.connect_callback()
                 self.bot_identifier = await self.build_identifier(login_response.user_id)
                 self.reset_reconnection_count()
             if self.has_synced:
-                log.info("Starting sync")
+                log.debug("Starting sync")
                 await self.client.sync_forever(30000, full_state=True)
                 log.debug("Sync finished")
             else:
                 log.info("First sync, discarding previous messages")
                 sync_response = await self.client.sync(full_state=True)
-                if isinstance(sync_response, SyncError):
-                    raise SyncError(sync_response)
+                if isinstance(sync_response, ErrorResponse):
+                    log.exception("Error reading from Matrix Nio updates rooms.")
+                    raise ValueError(sync_response)
                 self.has_synced = True
                 self.client.next_batch = sync_response.next_batch
                 # Only setup callback after first sync in order to avoid processing previous messages
                 self.client.add_event_callback(self.handle_message, nio.RoomMessageText)
                 log.info("End of first sync, now starting normal operation")
-
-        except KeyboardInterrupt:
+        except (KeyboardInterrupt, StopIteration):
             log.info("Interrupt received, shutting down..")
             await self.client.logout()
             log.debug("Triggering disconnect callback.")
             self.disconnect_callback()
-            return True  # True means shutdown was requested.
-        except Exception:
-            log.exception("Error reading from Matrix Nio updates rooms.")
-            raise
-        finally:
-            return
+            return True
 
     def handle_message(self, room: nio.MatrixRoom, event: nio.Event):
         """
@@ -371,7 +366,9 @@ class MatrixNioBackend(ErrBot):
         return "matrix-nio"
 
     def query_room(self, room):
-        return MatrixNioRoom(title=room, client=self.client)
+        rooms = asyncio.get_event_loop().run_until_complete(self.rooms())
+        chosen_room = rooms[room]
+        return chosen_room
 
     def rooms(self):
         result = self._rooms()
@@ -385,11 +382,11 @@ class MatrixNioBackend(ErrBot):
             result = result[0]
         else:
             raise ValueError(f"An error occured while fetching joined rooms: {result}")
-        rooms = []
+        rooms = {}
         for room_name in result.rooms:
-            rooms.append(MatrixNioRoom(room_name, self.client, title=room_name))
+            a_room = MatrixNioRoom(room_name, self.client, title=room_name)
+            rooms[a_room.id] = a_room
         return rooms
 
     def prefix_groupchat_reply(self, message, identifier):
-        super().prefix_groupchat_reply(message, identifier)
-        message.body = f"@{identifier.full_name} {message.body}"
+        message.body = f"@{identifier.fullname} {message.body}"

@@ -1,7 +1,5 @@
 import asyncio
-import builtins
 import copy
-import importlib
 import logging
 import unittest
 from unittest import TestCase
@@ -13,7 +11,7 @@ import nio
 from errbot import Message
 from errbot.core import ErrBot
 from nio import MatrixUser, JoinedRoomsResponse, JoinedRoomsError, ProfileGetResponse, ProfileGetError, \
-    RoomSendResponse, ErrorResponse, RoomMessageText, RoomMessageEmote
+    RoomSendResponse, ErrorResponse, RoomMessageText, RoomMessageEmote, LoginResponse, LoginError
 
 import matrix_nio
 
@@ -296,8 +294,126 @@ class TestMatrixNioBackend(aiounittest.AsyncTestCase):
         with self.assertRaises(SystemExit):
             matrix_nio.MatrixNioBackend(configuration_copy)
 
-    def test_matrix_nio_backend_serve_once(self):
-        pass
+    def test_matrix_nio_backend_serve_once_logged_in_has_synced(self):
+        backend = matrix_nio.MatrixNioBackend(self.bot_config)
+        backend.client = nio.AsyncClient("test.matrix.org", user="test_user", device_id="test_device")
+        backend.has_synced = True
+        # Needed for ensuring that backend.client.logged_in = True
+        backend.client.access_token = True
+        sync_forever_mock = mock.Mock(
+            return_value=aiounittest.futurized(
+                True
+            )
+        )
+        backend.client.sync_forever = sync_forever_mock
+        backend.serve_once()
+        sync_forever_mock.assert_called_once_with(30000, full_state=True)
+
+    def test_matrix_nio_backend_serve_once_logged_keyboard_interrupt(self):
+        backend = matrix_nio.MatrixNioBackend(self.bot_config)
+        backend.client = nio.AsyncClient("test.matrix.org", user="test_user", device_id="test_device")
+        backend.has_synced = True
+        # Needed for ensuring that backend.client.logged_in = True
+        backend.client.access_token = True
+        sync_forever_mock = mock.Mock(
+            side_effect=aiounittest.futurized(
+                KeyboardInterrupt()
+            )
+        )
+        backend.client.logout = mock.Mock(
+            return_value=aiounittest.futurized(
+                True
+            )
+        )
+        backend.client.sync_forever = sync_forever_mock
+        backend.serve_once()
+        sync_forever_mock.assert_called_once_with(30000, full_state=True)
+        backend.client.logout.assert_called_once()
+
+    def test_matrix_nio_backend_serve_once_not_logged_in_has_synced(self):
+        backend = matrix_nio.MatrixNioBackend(self.bot_config)
+        backend.client = nio.AsyncClient("test.matrix.org", user="test_user", device_id="test_device")
+        backend.has_synced = True
+        user_id = "@example:localhost"
+        login_response = LoginResponse.from_dict({
+            "user_id": user_id,
+            "device_id": "device_id",
+            "access_token": "12345",
+        })
+        login_response_mock = mock.Mock(
+            return_value=aiounittest.futurized(
+                login_response
+            )
+        )
+        backend.client.login_raw = login_response_mock
+        test_name = "Test Name"
+        backend.client.get_profile = mock.Mock(
+            return_value=aiounittest.futurized(
+                ProfileGetResponse.from_dict({
+                    "displayname": test_name,
+                    "avatar_url": "http://test.org/avatar.png"
+                })
+            )
+        )
+        sync_forever_mock = mock.Mock(
+            return_value=aiounittest.futurized(
+                True
+            )
+        )
+        backend.client.sync_forever = sync_forever_mock
+        backend.serve_once()
+        sync_forever_mock.assert_called_once_with(30000, full_state=True)
+        backend.client.get_profile.assert_called_once_with(user_id)
+        login_response_mock.assert_called_once_with(self.bot_config.BOT_IDENTITY["auth_dict"])
+
+    def test_matrix_nio_backend_serve_once_login_error(self):
+        backend = matrix_nio.MatrixNioBackend(self.bot_config)
+        backend.client = nio.AsyncClient("test.matrix.org", user="test_user", device_id="test_device")
+        user_id = "@example:localhost"
+        login_response = LoginError.from_dict({
+            "errcode": "ERROR_LOGGING_IN",
+            "error": "Error logging in",
+            "retry_after_ms": 10000
+        })
+        login_raw_mock = mock.Mock(
+            return_value=aiounittest.futurized(
+                login_response
+            )
+        )
+        backend.client.login_raw = login_raw_mock
+        with self.assertRaises(ValueError):
+            backend.serve_once()
+        login_raw_mock.assert_called_once_with(self.bot_config.BOT_IDENTITY["auth_dict"])
+
+    def test_matrix_nio_backend_serve_once_not_logged_in_has_not_synced_error_sync(self):
+        backend = matrix_nio.MatrixNioBackend(self.bot_config)
+        backend.client = nio.AsyncClient("test.matrix.org", user="test_user", device_id="test_device")
+        backend.client.access_token = True
+        user_id = "@example:localhost"
+        login_response = LoginResponse.from_dict({
+            "user_id": user_id,
+            "device_id": "device_id",
+            "access_token": "12345",
+        })
+        login_response_mock = mock.Mock(
+            return_value=aiounittest.futurized(
+                login_response
+            )
+        )
+        backend.client.login_raw = login_response_mock
+        sync_mock = mock.Mock(
+            return_value=aiounittest.futurized(
+                ErrorResponse.from_dict({
+                    "errcode": "ERROR_SYNCING",
+                    "error": "Error syncing",
+                    "retry_after_ms": 10000
+                })
+            )
+        )
+        backend.client.sync = sync_mock
+        with self.assertRaises(ValueError):
+            backend.serve_once()
+        sync_mock.assert_called_once_with(full_state=True)
 
     def test_matrix_nio_backend_handle_message(self):
         backend = matrix_nio.MatrixNioBackend(self.bot_config)
@@ -544,7 +660,26 @@ class TestMatrixNioBackend(aiounittest.AsyncTestCase):
         self.assertEqual(mode, "matrix-nio")
 
     def test_matrix_nio_backend_query_room(self):
-        pass
+        backend = matrix_nio.MatrixNioBackend(self.bot_config)
+        backend.client = nio.AsyncClient("test.matrix.org", user="test_user", device_id="test_device")
+        room_id1 = "test_room"
+        room_id2 = "another_test_room"
+        backend.client.rooms = {
+            room_id1: room_id1,
+            room_id2: room_id2
+        }
+
+        backend.client.joined_rooms = mock.Mock(
+            return_value=aiounittest.futurized(
+                JoinedRoomsResponse.from_dict({
+                    "joined_rooms": [room_id1, room_id2]
+                })
+            )
+        )
+        result_room1 = backend.query_room(room_id1)
+        result_room2 = backend.query_room(room_id2)
+        self.assertEqual(result_room1.id, room_id1)
+        self.assertEqual(result_room2.id, room_id2)
 
     async def test_matrix_nio_backend_rooms(self):
         backend = matrix_nio.MatrixNioBackend(self.bot_config)
@@ -568,7 +703,7 @@ class TestMatrixNioBackend(aiounittest.AsyncTestCase):
             backend.rooms()
         )
         result = result[0]
-        result = [a_result.id for a_result in result]
+        result = list(result.keys())
         self.assertIn(room_id1, result)
         self.assertIn(room_id2, result)
 
@@ -592,7 +727,14 @@ class TestMatrixNioBackend(aiounittest.AsyncTestCase):
             )
 
     def test_matrix_nio_backend_prefix_groupchat_reply(self):
-        pass
+        backend = matrix_nio.MatrixNioBackend(self.bot_config)
+        backend.client = nio.AsyncClient("test.matrix.org", user="test_user", device_id="test_device")
+        full_name = "Charles de Gaulle"
+        person = matrix_nio.MatrixNioPerson("an_id", backend.client, full_name, ["test@test.org"])
+        message = Message("A message")
+        message_body = f"@{person.fullname} {message.body}"
+        backend.prefix_groupchat_reply(message, person)
+        self.assertEqual(message.body, message_body)
 
 
 if __name__ == '__main__':
