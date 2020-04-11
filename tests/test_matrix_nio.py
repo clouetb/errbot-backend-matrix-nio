@@ -638,9 +638,10 @@ class TestMatrixNioBackend(aiounittest.AsyncTestCase):
         backend.client = nio.AsyncClient("test.matrix.org", user="test_user", device_id="test_device")
         # Needed for ensuring that backend.client.logged_in = True
         backend.client.access_token = True
-        # Temporarily disabled
-        #with open("sync.json") as json_file:
-        data = json.loads(fucking_string)
+
+        with open("sync.json") as json_file:
+            data = json.loads(json_file.read())
+
         sync_mock = mock.Mock(
             return_value=aiounittest.futurized(
                 SyncResponse.from_dict(data)
