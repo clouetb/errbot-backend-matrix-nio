@@ -1,15 +1,14 @@
 import logging
+
 import sys
 from typing import Any, Optional, List, Dict
-
 from errbot.backends.base import RoomError, Identifier, Person, RoomOccupant, Room, Message, ONLINE
 from errbot.core import ErrBot
-from nio import LoginError, AsyncClientConfig, RoomSendResponse, ErrorResponse, JoinedRoomsError, RoomForgetError, \
-    MatrixRoom
 
 log = logging.getLogger('errbot.backends.matrix-nio')
-
 try:
+    from nio import LoginError, AsyncClientConfig, RoomSendResponse, ErrorResponse, JoinedRoomsError, RoomForgetError, \
+        MatrixRoom
     import asyncio
     import nio
 except ImportError:
