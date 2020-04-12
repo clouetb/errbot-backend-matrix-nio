@@ -123,11 +123,13 @@ class MatrixNioRoom(MatrixNioIdentifier, Room):
 
     @classmethod
     def from_matrix_room(cls, matrix_room: MatrixRoom, nio_client: nio.Client):
-        return cls(
+        room = cls(
             matrix_room.room_id,
             nio_client,
             matrix_room.topic
         )
+        room.matrix_room = matrix_room
+        return room
 
     @property
     def id(self) -> str:

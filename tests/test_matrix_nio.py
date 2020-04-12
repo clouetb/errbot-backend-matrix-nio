@@ -162,6 +162,14 @@ class TestMatrixNioRoom(aiounittest.AsyncTestCase):
     def test_matrix_nio_room_creation(self):
         self.assertEqual(str(self.room1), self.room_id)
 
+    def test_matrix_nio_room_from_matrix_room(self):
+        client = nio.AsyncClient("test.matrix.org", user="test_user", device_id="test_device")
+        matrix_room = MatrixRoom("an_id", "an_owner")
+        client.rooms = {matrix_room.room_id: matrix_room}
+        matrix_nio_room = matrix_nio.MatrixNioRoom.from_matrix_room(matrix_room, client)
+        self.assertEqual(matrix_nio_room.matrix_room, matrix_room)
+        self.assertEqual(matrix_nio_room.id, matrix_room.room_id)
+
     def test_matrix_nio_room_aclattr(self):
         self.assertEqual(self.room1.aclattr, self.owner)
 
