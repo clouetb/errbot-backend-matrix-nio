@@ -14,7 +14,7 @@ from errbot import Message
 from errbot.core import ErrBot
 from nio import MatrixUser, JoinedRoomsResponse, JoinedRoomsError, ProfileGetResponse, ProfileGetError, \
     RoomSendResponse, ErrorResponse, RoomMessageText, RoomMessageEmote, LoginResponse, LoginError, SyncResponse, \
-    RoomForgetError, RoomForgetResponse
+    RoomForgetError, RoomForgetResponse, MatrixRoom
 
 import matrix_nio
 
@@ -56,6 +56,12 @@ class TestMatrixNioIdentifier(TestCase):
         identifier_string = matrix_nio.MatrixNioIdentifier(value_string)
         self.assertEqual(identifier_int, identifier_string)
 
+    def test_matrix_nio_identifier_other_any_type(self):
+        value_string = "12345"
+        identifier_string = matrix_nio.MatrixNioIdentifier(value_string)
+        obj = object()
+        self.assertNotEqual(identifier_string, obj)
+
 
 class TestMatrixNioPerson(TestCase):
     def __init__(self, method_name):
@@ -95,6 +101,16 @@ class TestMatrixNioPerson(TestCase):
     def test_matrix_nio_person_acls(self):
         acls = "charles.degaulle@elysee.fr,charles@colombay.fr"
         self.assertEqual(self.person1.aclattr, acls)
+
+    def test_matrix_nio_person_empty_acls(self):
+        person_id = "12345"
+        full_name = "Charles de Gaulle"
+        emails = []
+        person1 = matrix_nio.MatrixNioPerson(person_id,
+                                             client=self.client,
+                                             full_name=full_name,
+                                             emails=emails)
+        self.assertEqual(person1.aclattr, "")
 
     def test_matrix_nio_person_emails(self):
         emails = ["charles@colombay.fr", "charles.degaulle@elysee.fr"]
@@ -829,17 +845,10 @@ class TestMatrixNioBackend(aiounittest.AsyncTestCase):
         room_id1 = "test_room"
         room_id2 = "another_test_room"
         backend.client.rooms = {
-            room_id1: room_id1,
-            room_id2: room_id2
+            room_id1: MatrixRoom(room_id1, "owner1"),
+            room_id2: MatrixRoom(room_id2, "owner2")
         }
 
-        backend.client.joined_rooms = mock.Mock(
-            return_value=aiounittest.futurized(
-                JoinedRoomsResponse.from_dict({
-                    "joined_rooms": [room_id1, room_id2]
-                })
-            )
-        )
         result_room1 = backend.query_room(room_id1)
         result_room2 = backend.query_room(room_id2)
         self.assertEqual(result_room1.id, room_id1)
@@ -851,39 +860,14 @@ class TestMatrixNioBackend(aiounittest.AsyncTestCase):
         room_id1 = "test_room"
         room_id2 = "another_test_room"
         backend.client.rooms = {
-            room_id1: room_id1,
-            room_id2: room_id2
+            room_id1: MatrixRoom(room_id1, "owner1"),
+            room_id2: MatrixRoom(room_id2, "owner2")
         }
-
-        backend.client.joined_rooms = mock.Mock(
-            return_value=aiounittest.futurized(
-                JoinedRoomsResponse.from_dict({
-                    "joined_rooms": [room_id1, room_id2]
-                })
-            )
-        )
 
         result = backend.rooms()
         result = list(result.keys())
         self.assertIn(room_id1, result)
         self.assertIn(room_id2, result)
-
-    def test_matrix_nio_backend_rooms_error(self):
-        backend = matrix_nio.MatrixNioBackend(self.bot_config)
-        backend.client = nio.AsyncClient("test.matrix.org", user="test_user", device_id="test_device")
-
-        backend.client.joined_rooms = mock.Mock(
-            return_value=aiounittest.futurized(
-                JoinedRoomsError.from_dict({
-                    "errcode": "ERROR_FETCHING_SUBSCRIBED_ROOMS",
-                    "error": "Error fetching subscribed rooms",
-                    "retry_after_ms": 10000
-                }
-                )
-            )
-        )
-        with self.assertRaises(ValueError):
-            backend.rooms()
 
     def test_matrix_nio_backend_prefix_groupchat_reply(self):
         backend = matrix_nio.MatrixNioBackend(self.bot_config)

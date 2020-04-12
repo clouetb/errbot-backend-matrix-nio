@@ -4,7 +4,8 @@ from typing import Any, Optional, List, Dict
 
 from errbot.backends.base import RoomError, Identifier, Person, RoomOccupant, Room, Message, ONLINE
 from errbot.core import ErrBot
-from nio import LoginError, AsyncClientConfig, RoomSendResponse, ErrorResponse, JoinedRoomsError, RoomForgetError
+from nio import LoginError, AsyncClientConfig, RoomSendResponse, ErrorResponse, JoinedRoomsError, RoomForgetError, \
+    MatrixRoom
 
 log = logging.getLogger('errbot.backends.matrix-nio')
 
@@ -119,6 +120,14 @@ class MatrixNioRoom(MatrixNioIdentifier, Room):
         self._subject = subject
         self._client = client
         self.matrix_room = self._client.rooms[an_id]
+
+    @classmethod
+    def from_matrix_room(cls, matrix_room: MatrixRoom, nio_client: nio.Client):
+        return cls(
+            matrix_room.room_id,
+            nio_client,
+            matrix_room.topic
+        )
 
     @property
     def id(self) -> str:
@@ -393,30 +402,16 @@ class MatrixNioBackend(ErrBot):
         return "matrix-nio"
 
     def query_room(self, room) -> Optional[MatrixNioRoom]:
-        rooms = asyncio.get_event_loop().run_until_complete(self._rooms())
-        if rooms:
-            chosen_room = rooms[room]
-            return chosen_room
+        if room in self.client.rooms:
+            return MatrixNioRoom.from_matrix_room(self.client.rooms[room], self.client)
         else:
             return None
 
-    def rooms(self) -> Optional[Dict[Any, Any]]:
-        result = asyncio.get_event_loop().run_until_complete(self._rooms())
+    def rooms(self) -> Optional[Dict[str, MatrixNioRoom]]:
+        result = {}
+        for matrix_room in self.client.rooms.values():
+            result[matrix_room.room_id] = MatrixNioRoom.from_matrix_room(matrix_room, self.client)
         return result
-
-    async def _rooms(self) -> Optional[Dict[Any, Any]]:
-        result = await asyncio.gather(
-            self.client.joined_rooms()
-        )
-        if len(result) == 1 and isinstance(result[0], nio.responses.JoinedRoomsResponse):
-            joined_rooms = result[0]
-            rooms = {}
-            for room_name in joined_rooms.rooms:
-                a_room = MatrixNioRoom(room_name, self.client, title=room_name)
-                rooms[a_room.id] = a_room
-            return rooms
-        else:
-            raise ValueError(f"An error occured while fetching joined rooms: {result}")
 
     def prefix_groupchat_reply(self, message: Message, identifier: MatrixNioPerson) -> None:
         message.body = f"@{identifier.fullname} {message.body}"
