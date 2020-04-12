@@ -54,7 +54,7 @@ class MatrixNioIdentifier(Identifier):
 
 # `MatrixNioPerson` is used for both 1-1 PMs and Group PMs.
 class MatrixNioPerson(MatrixNioIdentifier, Person):
-    def __init__(self, an_id: str, client: nio.Client, full_name: str, emails: list):
+    def __init__(self, an_id: str, client: nio.Client, full_name: str, emails: Optional[List[str]] = None):
         super().__init__(an_id)
         self._full_name = full_name
         self._emails = emails
@@ -394,19 +394,19 @@ class MatrixNioBackend(ErrBot):
         result = self._rooms()
         return result
 
-    async def _rooms(self) -> dict:
+    async def _rooms(self) -> Optional[dict]:
         result = await asyncio.gather(
             self.client.joined_rooms()
         )
         if len(result) == 1 and isinstance(result[0], nio.responses.JoinedRoomsResponse):
             result = result[0]
+            rooms = {}
+            for room_name in result.rooms:
+                a_room = MatrixNioRoom(room_name, self.client, title=room_name)
+                rooms[a_room.id] = a_room
+            return rooms
         else:
             raise ValueError(f"An error occured while fetching joined rooms: {result}")
-        rooms = {}
-        for room_name in result.rooms:
-            a_room = MatrixNioRoom(room_name, self.client, title=room_name)
-            rooms[a_room.id] = a_room
-        return rooms
 
     def prefix_groupchat_reply(self, message: Message, identifier: MatrixNioPerson) -> None:
         message.body = f"@{identifier.fullname} {message.body}"
