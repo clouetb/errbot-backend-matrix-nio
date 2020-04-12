@@ -1,6 +1,6 @@
 import logging
 import sys
-from typing import Any, Coroutine
+from typing import Any, Coroutine, Optional, List
 
 from errbot.backends.base import RoomError, Identifier, Person, RoomOccupant, Room, Message, ONLINE
 from errbot.core import ErrBot
@@ -208,7 +208,7 @@ class MatrixNioRoom(MatrixNioIdentifier, Room):
             occupants.append(an_occupant)
         return occupants
 
-    async def invite(self, *args) -> None:
+    async def invite(self, *args: List[Any]) -> None:
         result_list = []
         for i in args[0]:
             result = await self._client.room_invite(i.user_id)
@@ -222,12 +222,17 @@ class MatrixNioRoomOccupant(MatrixNioPerson, RoomOccupant):
     This class represents a person subscribed to a stream.
     """
 
-    def __init__(self, an_id: str, full_name: str, client: nio.Client, emails: list = None, room: MatrixNioRoom = None):
+    def __init__(self,
+                 an_id: str,
+                 full_name: str,
+                 client: nio.Client,
+                 emails: Optional[List[str]] = None,
+                 room: MatrixNioRoom = None):
         super().__init__(an_id, full_name=full_name, emails=emails, client=client)
         self._room = room
 
     @property
-    def room(self) -> MatrixNioRoom:
+    def room(self) -> Optional[MatrixNioRoom]:
         return self._room
 
 
