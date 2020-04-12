@@ -130,8 +130,7 @@ class TestMatrixNioPerson(TestCase):
 
 
 class TestMatrixNioRoom(aiounittest.AsyncTestCase):
-    def __init__(self, method_name):
-        super().__init__(method_name)
+    def setUp(self) -> None:
         self.client = nio.AsyncClient("test.matrix.org", user="test_user", device_id="test_device")
         self.owner = "an_owner"
         self.room_id = "test_room"
@@ -382,8 +381,7 @@ class TestMatrixNioRoom(aiounittest.AsyncTestCase):
 
 
 class TestMatrixNioRoomOccupant(TestCase):
-    def __init__(self, method_name):
-        super().__init__(method_name)
+    def setUp(self) -> None:
         self.client = nio.AsyncClient("test.matrix.org", user="test_user", device_id="test_device")
         self.client.rooms = {"test_room": "empty_room", "other_test_room": "also_empty_room"}
 
@@ -415,8 +413,7 @@ class TestMatrixNioRoomOccupant(TestCase):
 
 
 class TestMatrixNioBackend(aiounittest.AsyncTestCase):
-    def __init__(self, method_name):
-        super().__init__(method_name)
+    def setUp(self) -> None:
 
         class Configuration(object):
             pass
