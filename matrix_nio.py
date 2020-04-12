@@ -214,7 +214,7 @@ class MatrixNioRoom(MatrixNioIdentifier, Room):
             result = await self._client.room_invite(i.user_id)
             result_list.append(result)
         if any(isinstance(x, nio.responses.RoomInviteError) for x in result_list):
-            raise MatrixNioRoomError(result_list)
+            raise MatrixNioRoomError(str(result_list))
 
 
 class MatrixNioRoomOccupant(MatrixNioPerson, RoomOccupant):
