@@ -22,7 +22,7 @@ except ImportError:
 
 
 class MatrixNioRoomError(RoomError):
-    def __init__(self, message=None):
+    def __init__(self, message: str = None):
         if message is None:
             message = (
                 "I currently do not support this request :(\n"
@@ -32,32 +32,35 @@ class MatrixNioRoomError(RoomError):
 
 
 class MatrixNioIdentifier(Identifier):
-    def __init__(self, an_id):
+    def __init__(self, an_id: str):
         self._id = str(an_id)
 
     @property
-    def id(self):
+    def id(self) -> str:
         return self._id
 
-    def __unicode__(self):
+    def __unicode__(self) -> str:
         return str(self._id)
 
-    def __eq__(self, other):
-        return self._id == other.id
+    def __eq__(self, other) -> bool:
+        if hasattr(other, "id"):
+            return self._id == other.id
+        else:
+            return False
 
     __str__ = __unicode__
 
 
 # `MatrixNioPerson` is used for both 1-1 PMs and Group PMs.
 class MatrixNioPerson(MatrixNioIdentifier, Person):
-    def __init__(self, an_id, client: nio.AsyncClient, full_name, emails):
+    def __init__(self, an_id: str, client: nio.Client, full_name: str, emails: list):
         super().__init__(an_id)
         self._full_name = full_name
         self._emails = emails
         self._client = client
 
     @property
-    def person(self):
+    def person(self) -> str:
         """
         Maps to user_id
         :return: user_id
@@ -65,7 +68,7 @@ class MatrixNioPerson(MatrixNioIdentifier, Person):
         return self._id
 
     @property
-    def fullname(self):
+    def fullname(self) -> str:
         """
         Maps to ProfileGetResponse.displayname
         :return: ProfileGetResponse.displayname
@@ -73,7 +76,7 @@ class MatrixNioPerson(MatrixNioIdentifier, Person):
         return self._full_name
 
     @property
-    def nick(self):
+    def nick(self) -> str:
         """
         Maps to ProfileGetResponse.displayname
         :return: ProfileGetResponse.displayname
@@ -81,7 +84,7 @@ class MatrixNioPerson(MatrixNioIdentifier, Person):
         return self._full_name
 
     @property
-    def client(self):
+    def client(self) -> nio.Client:
         """
         Maps to AsyncClient
         :return: AsyncClient
@@ -89,7 +92,7 @@ class MatrixNioPerson(MatrixNioIdentifier, Person):
         return self._client
 
     @property
-    def emails(self):
+    def emails(self) -> list:
         """
         Maps to ProfileGetResponse.other_info['address']
         :return: ProfileGetResponse.other_info['address']
@@ -97,7 +100,7 @@ class MatrixNioPerson(MatrixNioIdentifier, Person):
         return self._emails
 
     @property
-    def aclattr(self):
+    def aclattr(self) -> str:
         """
         Maps to ProfileGetResponse.other_info['address']
         :return: ProfileGetResponse.other_info['address']
@@ -106,7 +109,7 @@ class MatrixNioPerson(MatrixNioIdentifier, Person):
 
 
 class MatrixNioRoom(MatrixNioIdentifier, Room):
-    def __init__(self, an_id, client: nio.AsyncClient, title, subject=None):
+    def __init__(self, an_id: str, client: nio.Client, title: str, subject: str = None):
         super().__init__(an_id)
         self._title = title
         self._subject = subject
@@ -114,7 +117,7 @@ class MatrixNioRoom(MatrixNioIdentifier, Room):
         self.matrix_room = self._client.rooms[an_id]
 
     @property
-    def id(self):
+    def id(self) -> str:
         """
         Maps to MatrixRoom.room_id
         :return: MatrixRoom.room_id
@@ -122,7 +125,7 @@ class MatrixNioRoom(MatrixNioIdentifier, Room):
         return self._id
 
     @property
-    def aclattr(self):
+    def aclattr(self) -> str:
         """
         Maps to MatrixRoom.own_user_id
         :return: MatrixRoom.own_user_id
@@ -130,7 +133,7 @@ class MatrixNioRoom(MatrixNioIdentifier, Room):
         return self.matrix_room.own_user_id
 
     @property
-    def subject(self):
+    def subject(self) -> str:
         """
         Maps to MatrixRoom.topic
         :return: MatrixRoom.topic
@@ -138,7 +141,7 @@ class MatrixNioRoom(MatrixNioIdentifier, Room):
         return self.matrix_room.topic
 
     @property
-    def title(self):
+    def title(self) -> str:
         """
         Maps to MatrixRoom.display_name
         :return: MatrixRoom.display_name
@@ -162,14 +165,14 @@ class MatrixNioRoom(MatrixNioIdentifier, Room):
         if isinstance(result, RoomForgetError):
             raise ValueError(f"Error while forgetting/destroying room {result}")
 
-    async def join(self, username: str = None, password: str = None):
+    async def join(self, username: str = None, password: str = None) -> None:
         result = None
         if self._client:
             result = await self._client.join(self.id)
         if isinstance(result, nio.responses.JoinError):
             raise MatrixNioRoomError(result)
 
-    async def create(self):
+    async def create(self) -> None:
         result = await self._client.room_create(
             name=self.title,
             topic=self.subject
@@ -177,14 +180,14 @@ class MatrixNioRoom(MatrixNioIdentifier, Room):
         if isinstance(result, nio.responses.RoomCreateError):
             raise MatrixNioRoomError(result)
 
-    async def leave(self, reason: str = None):
+    async def leave(self, reason: str = None) -> None:
         if self._client:
             result = await self._client.room_leave(self.id)
         if isinstance(result, nio.responses.RoomLeaveError):
             raise MatrixNioRoomError(result)
 
     @property
-    def topic(self):
+    def topic(self) -> str:
         """
         Maps to MatrixRoom.topic
         :return: MatrixRoom.topic
@@ -192,7 +195,7 @@ class MatrixNioRoom(MatrixNioIdentifier, Room):
         return self.matrix_room.topic
 
     @property
-    def occupants(self):
+    def occupants(self) -> list:
         """
         Maps to MatrixRoom.users
         :return: MatrixRoom.users
@@ -204,7 +207,7 @@ class MatrixNioRoom(MatrixNioIdentifier, Room):
             occupants.append(an_occupant)
         return occupants
 
-    async def invite(self, *args):
+    async def invite(self, *args) -> None:
         result_list = []
         for i in args[0]:
             result = await self._client.room_invite(i.user_id)
@@ -218,12 +221,12 @@ class MatrixNioRoomOccupant(MatrixNioPerson, RoomOccupant):
     This class represents a person subscribed to a stream.
     """
 
-    def __init__(self, an_id, full_name, client, emails=None, room=None):
+    def __init__(self, an_id: str, full_name: str, client: nio.Client, emails: list = None, room: MatrixNioRoom = None):
         super().__init__(an_id, full_name=full_name, emails=emails, client=client)
         self._room = room
 
     @property
-    def room(self):
+    def room(self) -> MatrixNioRoom:
         return self._room
 
 
@@ -251,7 +254,7 @@ class MatrixNioBackend(ErrBot):
         log.debug("Serve once")
         asyncio.get_event_loop().run_until_complete(self._serve_once())
 
-    async def _serve_once(self):
+    async def _serve_once(self) -> None:
         try:
             if not self.client.logged_in:
                 log.info("Initializing connection")
@@ -284,7 +287,7 @@ class MatrixNioBackend(ErrBot):
             self.disconnect_callback()
             return True
 
-    def handle_message(self, room: nio.MatrixRoom, event: nio.Event):
+    def handle_message(self, room: nio.MatrixRoom, event: nio.Event) -> None:
         """
         Handles incoming messages.
         """
@@ -313,13 +316,13 @@ class MatrixNioBackend(ErrBot):
         message_instance.to = room_instance
         self.callback_message(message_instance)
 
-    def send_message(self, msg: Message):
+    def send_message(self, msg: Message) -> RoomSendResponse:
         log.debug(f"Sending message {msg}")
         super().send_message(msg)
         result = self._send_message(msg)
         return result
 
-    async def _send_message(self, msg: Message):
+    async def _send_message(self, msg: Message) -> RoomSendResponse:
         msg_data = {
             'msgtype': "m.text",
             'body': msg.body
@@ -343,7 +346,7 @@ class MatrixNioBackend(ErrBot):
         # TODO implement this
         pass
 
-    def is_from_self(self, msg: Message):
+    def is_from_self(self, msg: Message) -> bool:
         return msg.frm.id == self.client.user
 
     def change_presence(self, status: str = ONLINE, message: str = '') -> None:
@@ -351,7 +354,7 @@ class MatrixNioBackend(ErrBot):
         # At this time, this backend doesn't support presence
         pass
 
-    async def build_identifier(self, txtrep):
+    async def build_identifier(self, txtrep) -> MatrixNioPerson:
         log.debug(f"Build id : {txtrep}")
         profile = await asyncio.gather(
             self.client.get_profile(txtrep)
@@ -364,26 +367,26 @@ class MatrixNioBackend(ErrBot):
         else:
             raise ValueError(f"An error occured while fetching identifier: {profile}")
 
-    def build_reply(self, msg, text=None, private=False, threaded=False):
+    def build_reply(self, msg, text=None, private=False, threaded=False) -> Message:
         # TODO : Include marker for threaded response
         response = self.build_message(f"{msg.body}\n{text}")
         response.to = msg.frm
         return response
 
     @property
-    def mode(self):
+    def mode(self) -> str:
         return "matrix-nio"
 
-    def query_room(self, room):
+    def query_room(self, room) -> MatrixNioRoom:
         rooms = asyncio.get_event_loop().run_until_complete(self.rooms())
         chosen_room = rooms[room]
         return chosen_room
 
-    def rooms(self):
-        result = self._rooms()
+    def rooms(self) -> dict:
+        result = asyncio.get_event_loop().run_until_complete(self._rooms())
         return result
 
-    async def _rooms(self):
+    async def _rooms(self) -> dict:
         result = await asyncio.gather(
             self.client.joined_rooms()
         )
@@ -397,5 +400,5 @@ class MatrixNioBackend(ErrBot):
             rooms[a_room.id] = a_room
         return rooms
 
-    def prefix_groupchat_reply(self, message, identifier):
+    def prefix_groupchat_reply(self, message: Message, identifier: MatrixNioPerson) -> None:
         message.body = f"@{identifier.fullname} {message.body}"
