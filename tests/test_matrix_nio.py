@@ -862,6 +862,17 @@ class TestMatrixNioBackend(aiounittest.AsyncTestCase):
         self.assertEqual(result_room1.id, room_id1)
         self.assertEqual(result_room2.id, room_id2)
 
+    def test_matrix_nio_backend_query_empty_room(self):
+        backend = matrix_nio.MatrixNioBackend(self.bot_config)
+        backend.client = nio.AsyncClient("test.matrix.org", user="test_user", device_id="test_device")
+        room_id1 = "test_room"
+        room_id2 = "another_test_room"
+        backend.client.rooms = {
+            room_id1: MatrixRoom(room_id1, "owner1"),
+            room_id2: MatrixRoom(room_id2, "owner2")
+        }
+        self.assertEqual(backend.query_room("non_existent_room"), None)
+
     def test_matrix_nio_backend_rooms(self):
         backend = matrix_nio.MatrixNioBackend(self.bot_config)
         backend.client = nio.AsyncClient("test.matrix.org", user="test_user", device_id="test_device")
