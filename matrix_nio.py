@@ -1,6 +1,6 @@
 import logging
 import sys
-from typing import Any, Coroutine, Optional, List
+from typing import Any, Optional, List, Dict
 
 from errbot.backends.base import RoomError, Identifier, Person, RoomOccupant, Room, Message, ONLINE
 from errbot.core import ErrBot
@@ -93,7 +93,7 @@ class MatrixNioPerson(MatrixNioIdentifier, Person):
         return self._client
 
     @property
-    def emails(self) -> list:
+    def emails(self) -> Optional[List[str]]:
         """
         Maps to ProfileGetResponse.other_info['address']
         :return: ProfileGetResponse.other_info['address']
@@ -106,7 +106,10 @@ class MatrixNioPerson(MatrixNioIdentifier, Person):
         Maps to ProfileGetResponse.other_info['address']
         :return: ProfileGetResponse.other_info['address']
         """
-        return ','.join(sorted(self._emails))
+        if self.emails:
+            return ','.join(sorted(self.emails))
+        else:
+            return ""
 
 
 class MatrixNioRoom(MatrixNioIdentifier, Room):
@@ -362,7 +365,7 @@ class MatrixNioBackend(ErrBot):
         # At this time, this backend doesn't support presence
         pass
 
-    async def build_identifier(self, txtrep) -> MatrixNioPerson:
+    async def build_identifier(self, txtrep: str) -> MatrixNioPerson:
         log.debug(f"Build id : {txtrep}")
         profile = await asyncio.gather(
             self.client.get_profile(txtrep)
@@ -375,7 +378,11 @@ class MatrixNioBackend(ErrBot):
         else:
             raise ValueError(f"An error occured while fetching identifier: {profile}")
 
-    def build_reply(self, msg, text=None, private=False, threaded=False) -> Message:
+    def build_reply(self,
+                    msg: Message,
+                    text: str = None,
+                    private: bool = False,
+                    threaded: bool = False) -> Message:
         # TODO : Include marker for threaded response
         response = self.build_message(f"{msg.body}\n{text}")
         response.to = msg.frm
@@ -385,23 +392,26 @@ class MatrixNioBackend(ErrBot):
     def mode(self) -> str:
         return "matrix-nio"
 
-    def query_room(self, room) -> MatrixNioRoom:
-        rooms = asyncio.get_event_loop().run_until_complete(self.rooms())
-        chosen_room = rooms[room]
-        return chosen_room
+    def query_room(self, room) -> Optional[MatrixNioRoom]:
+        rooms = asyncio.get_event_loop().run_until_complete(self._rooms())
+        if rooms:
+            chosen_room = rooms[room]
+            return chosen_room
+        else:
+            return None
 
-    def rooms(self) -> Coroutine[Any, Any, dict]:
-        result = self._rooms()
+    def rooms(self) -> Optional[Dict[Any, Any]]:
+        result = asyncio.get_event_loop().run_until_complete(self._rooms())
         return result
 
-    async def _rooms(self) -> Optional[dict]:
+    async def _rooms(self) -> Optional[Dict[Any, Any]]:
         result = await asyncio.gather(
             self.client.joined_rooms()
         )
         if len(result) == 1 and isinstance(result[0], nio.responses.JoinedRoomsResponse):
-            result = result[0]
+            joined_rooms = result[0]
             rooms = {}
-            for room_name in result.rooms:
+            for room_name in joined_rooms.rooms:
                 a_room = MatrixNioRoom(room_name, self.client, title=room_name)
                 rooms[a_room.id] = a_room
             return rooms

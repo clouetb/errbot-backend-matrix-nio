@@ -329,7 +329,6 @@ class TestMatrixNioRoom(aiounittest.AsyncTestCase):
         nio_room1.destroy()
         matrix_client.room_forget.assert_called_once_with("nio_room1")
 
-
     def test_matrix_nio_room_destroy_error(self):
         matrix_client = nio.AsyncClient("test.matrix.org", user="test_user", device_id="test_device")
         room1 = nio.MatrixRoom("nio_room1", "room1_owner")
@@ -846,7 +845,7 @@ class TestMatrixNioBackend(aiounittest.AsyncTestCase):
         self.assertEqual(result_room1.id, room_id1)
         self.assertEqual(result_room2.id, room_id2)
 
-    async def test_matrix_nio_backend_rooms(self):
+    def test_matrix_nio_backend_rooms(self):
         backend = matrix_nio.MatrixNioBackend(self.bot_config)
         backend.client = nio.AsyncClient("test.matrix.org", user="test_user", device_id="test_device")
         room_id1 = "test_room"
@@ -864,15 +863,12 @@ class TestMatrixNioBackend(aiounittest.AsyncTestCase):
             )
         )
 
-        result = await asyncio.gather(
-            backend.rooms()
-        )
-        result = result[0]
+        result = backend.rooms()
         result = list(result.keys())
         self.assertIn(room_id1, result)
         self.assertIn(room_id2, result)
 
-    async def test_matrix_nio_backend_rooms_error(self):
+    def test_matrix_nio_backend_rooms_error(self):
         backend = matrix_nio.MatrixNioBackend(self.bot_config)
         backend.client = nio.AsyncClient("test.matrix.org", user="test_user", device_id="test_device")
 
@@ -887,9 +883,7 @@ class TestMatrixNioBackend(aiounittest.AsyncTestCase):
             )
         )
         with self.assertRaises(ValueError):
-            result = await asyncio.gather(
-                backend.rooms()
-            )
+            backend.rooms()
 
     def test_matrix_nio_backend_prefix_groupchat_reply(self):
         backend = matrix_nio.MatrixNioBackend(self.bot_config)
