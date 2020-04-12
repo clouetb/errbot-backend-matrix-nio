@@ -383,7 +383,7 @@ class MatrixNioBackend(ErrBot):
         return chosen_room
 
     def rooms(self) -> dict:
-        result = asyncio.get_event_loop().run_until_complete(self._rooms())
+        result = self._rooms()
         return result
 
     async def _rooms(self) -> dict:
