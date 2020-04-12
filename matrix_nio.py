@@ -1,5 +1,6 @@
 import logging
 import sys
+from typing import Any, Coroutine
 
 from errbot.backends.base import RoomError, Identifier, Person, RoomOccupant, Room, Message, ONLINE
 from errbot.core import ErrBot
@@ -250,11 +251,11 @@ class MatrixNioBackend(ErrBot):
             config=config
         )
 
-    def serve_once(self) -> None:
+    def serve_once(self) -> bool:
         log.debug("Serve once")
-        asyncio.get_event_loop().run_until_complete(self._serve_once())
+        return asyncio.get_event_loop().run_until_complete(self._serve_once())
 
-    async def _serve_once(self) -> None:
+    async def _serve_once(self) -> bool:
         try:
             if not self.client.logged_in:
                 log.info("Initializing connection")
@@ -269,6 +270,7 @@ class MatrixNioBackend(ErrBot):
                 log.debug("Starting sync")
                 await self.client.sync_forever(30000, full_state=True)
                 log.debug("Sync finished")
+                return False
             else:
                 log.info("First sync, discarding previous messages")
                 sync_response = await self.client.sync(full_state=True)
@@ -280,6 +282,7 @@ class MatrixNioBackend(ErrBot):
                 # Only setup callback after first sync in order to avoid processing previous messages
                 self.client.add_event_callback(self.handle_message, nio.RoomMessageText)
                 log.info("End of first sync, now starting normal operation")
+                return False
         except (KeyboardInterrupt, StopIteration):
             log.info("Interrupt received, shutting down..")
             await self.client.logout()
@@ -328,7 +331,7 @@ class MatrixNioBackend(ErrBot):
             'body': msg.body
         }
         result = await self.client.room_send(
-            room_id=msg.to,
+            room_id=str(msg.to),
             message_type='m.room.message',
             content=msg_data
         )
@@ -382,7 +385,7 @@ class MatrixNioBackend(ErrBot):
         chosen_room = rooms[room]
         return chosen_room
 
-    def rooms(self) -> dict:
+    def rooms(self) -> Coroutine[Any, Any, dict]:
         result = self._rooms()
         return result
 
