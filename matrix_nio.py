@@ -340,7 +340,7 @@ class MatrixNioBackend(ErrBot):
     def send_message(self, msg: Message) -> RoomSendResponse:
         log.debug(f"Sending message {msg}")
         super().send_message(msg)
-        result = asyncio.get_event_loop().run_until_complete(self._send_message(msg))
+        result = asyncio.run_coroutine_threadsafe(self._send_message(msg), asyncio.get_event_loop())
         return result
 
     async def _send_message(self, msg: Message) -> RoomSendResponse:
@@ -349,10 +349,11 @@ class MatrixNioBackend(ErrBot):
             'body': msg.body
         }
         result = await self.client.room_send(
-            room_id=str(msg.to),
+            room_id=str(msg.to.room),
             message_type='m.room.message',
             content=msg_data
         )
+        # TODO RoomSendError not trapped properly
         if isinstance(result, RoomSendResponse):
             return result
         else:
@@ -368,7 +369,7 @@ class MatrixNioBackend(ErrBot):
         pass
 
     def is_from_self(self, msg: Message) -> bool:
-        return msg.frm.id == self.client.user
+        return msg.frm.id == self.client.user_id
 
     def change_presence(self, status: str = ONLINE, message: str = '') -> None:
         # TODO implement this
