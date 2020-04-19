@@ -666,7 +666,7 @@ class TestMatrixNioBackend(aiounittest.AsyncTestCase):
         backend.handle_message(test_room, test_message)
         callback.assert_not_called()
 
-    async def test_matrix_nio_backend_send_message(self):
+    def test_matrix_nio_backend_send_message(self):
         backend = matrix_nio.MatrixNioBackend(self.bot_config)
         test_server = "test.matrix.org"
         test_user = f"@test_user:{test_server}"
@@ -694,17 +694,14 @@ class TestMatrixNioBackend(aiounittest.AsyncTestCase):
         test_message.to = matrix_nio.MatrixNioRoom("test_room",
                                                    client=backend.client,
                                                    title="A title")
-        result = await asyncio.gather(
-            backend.send_message(test_message)
-        )
-        result = result[0]
+        result = backend.send_message(test_message)
         self.assertIsInstance(result, RoomSendResponse)
         self.assertEqual(result.room_id, room_id)
         self.assertEqual(result.event_id, event_id)
         # TODO: Add assert called once with
         backend.client.room_send.assert_called_once()
 
-    async def test_matrix_nio_backend_send_message_error(self):
+    def test_matrix_nio_backend_send_message_error(self):
         backend = matrix_nio.MatrixNioBackend(self.bot_config)
         test_server = "test.matrix.org"
         test_user = f"@test_user:{test_server}"
@@ -734,9 +731,7 @@ class TestMatrixNioBackend(aiounittest.AsyncTestCase):
                                                    client=backend.client,
                                                    title="A title")
         with self.assertRaises(ValueError):
-            result = await asyncio.gather(
-                backend.send_message(test_message)
-            )
+            result = backend.send_message(test_message)
         backend.client.room_send.assert_called_once()
         # TODO: Add assert called once with
 

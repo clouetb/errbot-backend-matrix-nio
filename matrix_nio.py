@@ -340,7 +340,7 @@ class MatrixNioBackend(ErrBot):
     def send_message(self, msg: Message) -> RoomSendResponse:
         log.debug(f"Sending message {msg}")
         super().send_message(msg)
-        result = self._send_message(msg)
+        result = asyncio.get_event_loop().run_until_complete(self._send_message(msg))
         return result
 
     async def _send_message(self, msg: Message) -> RoomSendResponse:
