@@ -414,7 +414,6 @@ class TestMatrixNioRoomOccupant(TestCase):
 
 class TestMatrixNioBackend(aiounittest.AsyncTestCase):
     def setUp(self) -> None:
-
         class Configuration(object):
             pass
 
@@ -709,7 +708,6 @@ class TestMatrixNioBackend(aiounittest.AsyncTestCase):
         room_id = "test_room"
         backend.client = nio.AsyncClient(test_server, user=test_user, device_id="test_device")
         backend.client.rooms = {"test_room": "Test Room", "other_test_room": "Test Room"}
-        ErrBot.send_message = mock.Mock()
         backend.client.room_send = mock.Mock(
             return_value=aiounittest.futurized(
                 ErrorResponse.from_dict({
