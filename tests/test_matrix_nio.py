@@ -666,7 +666,7 @@ class TestMatrixNioBackend(aiounittest.AsyncTestCase):
         backend.handle_message(test_room, test_message)
         callback.assert_not_called()
 
-    def test_matrix_nio_backend_send_message(self):
+    async def test_matrix_nio_backend_send_message(self):
         backend = matrix_nio.MatrixNioBackend(self.bot_config)
         test_server = "test.matrix.org"
         test_user = f"@test_user:{test_server}"
@@ -674,7 +674,6 @@ class TestMatrixNioBackend(aiounittest.AsyncTestCase):
         room_id = "test_room"
         backend.client = nio.AsyncClient(test_server, user=test_user, device_id="test_device")
         backend.client.rooms = {"test_room": "Test Room", "other_test_room": "Test Room"}
-        ErrBot.send_message = mock.Mock()
         backend.client.room_send = mock.Mock(
             return_value=aiounittest.futurized(
                 RoomSendResponse.from_dict({
@@ -694,14 +693,15 @@ class TestMatrixNioBackend(aiounittest.AsyncTestCase):
         test_message.to = matrix_nio.MatrixNioRoom("test_room",
                                                    client=backend.client,
                                                    title="A title")
-        result = backend.send_message(test_message)
+        test_message.to.room = "test_room"
+        result = await backend._send_message(test_message)
         self.assertIsInstance(result, RoomSendResponse)
         self.assertEqual(result.room_id, room_id)
         self.assertEqual(result.event_id, event_id)
         # TODO: Add assert called once with
         backend.client.room_send.assert_called_once()
 
-    def test_matrix_nio_backend_send_message_error(self):
+    async def test_matrix_nio_backend_send_message_error(self):
         backend = matrix_nio.MatrixNioBackend(self.bot_config)
         test_server = "test.matrix.org"
         test_user = f"@test_user:{test_server}"
@@ -730,8 +730,9 @@ class TestMatrixNioBackend(aiounittest.AsyncTestCase):
         test_message.to = matrix_nio.MatrixNioRoom("test_room",
                                                    client=backend.client,
                                                    title="A title")
+        test_message.to.room = "test_room"
         with self.assertRaises(ValueError):
-            result = backend.send_message(test_message)
+            result = await backend._send_message(test_message)
         backend.client.room_send.assert_called_once()
         # TODO: Add assert called once with
 
@@ -742,6 +743,7 @@ class TestMatrixNioBackend(aiounittest.AsyncTestCase):
                                          user=test_user_id,
                                          device_id="test_device"
                                          )
+        backend.client.user_id = test_user_id
         message_text = "Test message"
         test_message = Message(message_text,
                                matrix_nio.MatrixNioPerson(test_user_id,
